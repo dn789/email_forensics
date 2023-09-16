@@ -101,11 +101,15 @@ def get_entities_and_keywords(text_folder, output, n_files=None, entities=('ORG'
 def check_keywords_for_relevance(keywords, ref_synsets, threshold=.8, metric=wn.wup_similarity):
     """Checks keywords for possible relevance to a vendor-related e-mail"""
     for kw in keywords:
-        synset = wn.get_synsets(kw)[0]
-        for ref_synset in ref_synsets:
-            similarity = metric(synset, ref_synset)
-            if similarity >= threshold:
-                return True
+        for word in kw.split():
+            synsets = wn.get_synsets(word)
+            if not synsets:
+                continue
+            synset = synsets[0]
+            for ref_synset in ref_synsets:
+                similarity = metric(synset, ref_synset)
+                if similarity >= threshold:
+                    return True
 
 
 def check_keywords_for_entities(keywords, entities, threshold=.8):
