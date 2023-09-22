@@ -1,3 +1,4 @@
+import json
 import os
 
 from bs4 import BeautifulSoup
@@ -46,48 +47,57 @@ def get_email_text_and_subject(path, combine=True, stripHTML=True):
 # pst files
 
 def get_messages_from_pst(pst_path, output_folder):
+    """
+    Makes JSON files of emails in output_folder.  
+    ----------
+    pst_path : str
+    output_folder : str
+    """
     if not os.path.isdir(output_folder):
         os.makedirs(output_folder, exist_ok=True)
     file_ = pypff.open(pst_path)
     root = file_.get_root_folder()
     for x in root.sub_items:
-        walk_folder_for_messages(x, output_folder=output_folder)
+        walk_folder_for_messages(
+            x, output_folder=output_folder)
 
 
 def walk_folder_for_messages(folder, output_folder):
     for i in folder.sub_items:
         if type(i) == pypff.message:
-            subject = i.subject
-            text = i.plain_text_body.decode()
-            message = f'{subject}\n{text}'
-            with open(os.path.join(output_folder, str(i.identifier)), 'w', encoding='utf-8') as f:
-                f.write(message)
+            message = {}
+            if i.transport_headers:
+                headers = i.transport_headers.split('\r\n')
+                for header in headers:
+                    if header:
+                        k, v = header.split(':', 1)
+                        message[k] = v.strip()
+            message['body'] = i.plain_text_body.decode()
+            with open(os.path.join(output_folder, f'{i.identifier}.json'), 'w', encoding='utf-8') as f:
+                json.dump(message, f)
         elif type(i) == pypff.folder:
-            walk_folder_for_messages(i, output_folder=output_folder)
+            walk_folder_for_messages(
+                i, output_folder=output_folder)
 
 
-# Wordnet
-
-def get_lemmas(words):
-    lemmas = set()
-    for word in words:
-        for syn in wordnet.synsets(word):
-            for l in syn.lemmas():
-                lemmas.add(l.name())
-    return list(lemmas)
-
-
-def get_synsets(words):
-    synsets = []
-    for word in words:
-        synsets_for_word = []
-        for synset in wordnet.synsets(word):
-            synsets_for_word.append(synset)
-        synsets.append(synsets_for_word)
-    return synsets
+def make_email_dict_from_string(email):
+    """Makes dict of headers, body from text string (eg. from Enron corpus)."""
+    email_dict = {}
+    header_lines, body = email.split('\n\n', 1)
+    header_lines = header_lines.split('\n')
+    headers = []
+    for line in header_lines:
+        if line.startswith('\t') or line.startswith(' '):
+            headers[-1] = headers[-1] + f' {line.strip()}'
+        else:
+            headers.append(line)
+    for header in headers:
+        k, v = header.split(':', 1)
+        email_dict[k] = v.strip()
+    email_dict['body'] = body
+    return email_dict
 
 
-def print_synset_lemmas(synsets):
-    for word_i, s in enumerate(synsets):
-        for synset_i, synsets_for_word in enumerate(s):
-            print(word_i, '*', synset_i, synsets_for_word.lemmas())
+# email = open('test_emails/10041').read()
+# print(email)
+# print(make_email_dict_from_string(email))
