@@ -7,7 +7,7 @@ Specify DOCS_FOLDER and then:
 etc.
 (4) get_all_sender_recipient_pairs --> csv of sender/recipient pairs and counts. 
 """
-
+import argparse
 from collections import Counter
 import json
 import os
@@ -21,7 +21,8 @@ from nltk import sent_tokenize
 from nltk.corpus import wordnet as wn
 import pandas as pd
 import plotly.express as px
-from sklearn.feature_extraction import text
+import random
+# from sklearn.feature_extraction import text
 from sklearn.feature_extraction.text import CountVectorizer
 from tqdm import tqdm
 
@@ -251,11 +252,11 @@ def get_entities(filename,
         relevance_json, 'w', encoding='utf-8'), default=list)
 
 
-def get_top_entities_by_prop_docs(proportion, entities_file):
+def get_ranked_entities_from_file(proportion, entities_file):
     entities = []
     for line in open(entities_file).read().strip().split('\n'):
         try:
-            tag, entity, prop = line.split('\t')
+            entity, prop = line.split('\t')
             if float(prop) >= proportion:
                 entities.append(entity)
             else:
@@ -281,7 +282,38 @@ def graph_entities(entities_json, top_n_entities=None, exclude=None):
     fig.show()
 
 
-def get_person_org_pairs(relevance_label, relevance_json, entity_json, kw_json, exclude=None):
+def get_ranked_entities(folder, output):
+    """
+    Creates file of entities and their % of occurence in 1000 docs in folder.
+    """
+    fs = os.listdir(folder)
+    random.shuffle(fs)
+    tagger = NerTagger()
+    entities_d = Counter()
+    fs = fs[:5000]
+    doc_count = len(fs)
+    for f in tqdm(fs, f'Getting entities from {doc_count} random emails...'):
+        f_ = open(os.path.join(folder, f))
+        try:
+            if f.endswith('json'):
+                doc = json.load(f_)['body'].strip()
+            else:
+                doc = f_.read().split('\n\n')[-1].strip()
+        except UnicodeDecodeError:
+            pass
+        entities = tagger(doc)
+        for tag in entities:
+            for e in entities[tag]:
+                entities_d[e] += 1
+    to_write = []
+
+    for e, count in entities_d.most_common():
+        to_write.append(f'{e}\t{count/doc_count}')
+    with open(output, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(to_write))
+
+
+def get_person_org_pairs(relevance_label, docs_folder, relevance_json, entity_json, kw_json, ranked_entities_path=None):
     """
     Makes dataframe of:
     - person-org pairs
@@ -296,9 +328,17 @@ def get_person_org_pairs(relevance_label, relevance_json, entity_json, kw_json, 
     relevance_json : str
     entity_json : str
     kw_json : str
-    exclude : list
-        List of ORG entities to exclude, by default None
+    ranked_entities_path : str
+        Path to ranked entities % occurence in docs (all that occur in >= 5%
+        of docs will bbe excluded)
     """
+    if os.path.isfile(ranked_entities_path):
+        exclude = get_ranked_entities_from_file(
+            .05, ranked_entities_path)
+    else:
+        get_ranked_entities(docs_folder, ranked_entities_path)
+        exclude = get_ranked_entities_from_file(
+            .05, ranked_entities_path)
     exclude = exclude or []
     relevance_dict = json.load(
         open(relevance_json, encoding='utf-8'))
@@ -395,52 +435,69 @@ def get_all_sender_recipient_pairs(relevance_json, docss_folder, relevance_label
     return df
 
 
-# SPECIFY THIS
-DOCS_FOLDER = 'test_emails'
-#
-KW_PATH = 'kws.json'
-KW_BATCH_SIZE = None
-ENTITY_PATH = 'entities.json'
-RELEVANCE_PATH = 'relevance.json'
-RELEVANCE_LABEL = 'invoice synset only'
-REF_SYNSETS = ['invoice.n.01']
-ENTITY_PAIRS_PATH = 'person-org pairs.csv'
-TO_FROM_PAIRS_PATH = 'to_from_pairs.csv'
-EXCLUDE_WORDS = get_top_entities_by_prop_docs(
-    .05, 'named_entities_ranked_doc_proportion.txt')
-STOP_WORDS = text.ENGLISH_STOP_WORDS.union(EXCLUDE_WORDS)
-KW_KWARGS = {'top_n': 10}
-GET_KWS = True
-GET_ENTITIES = True
-GET_PERSON_ORG_PAIRS = True
-GET_TO_FROM_PAIRS = True
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description="""Makes (1) CSV of top co-occuring person and organization entities
+    (2) top sender/recipient pairs in emails """)
 
-if GET_KWS:
-    get_keywords(KW_PATH, DOCS_FOLDER, KW_KWARGS, batch_size=KW_BATCH_SIZE)
+    parser.add_argument('docs_folder', help='Folder containing emails')
+    parser.add_argument(
+        '-kw_path', help='Path for keywords JSON', default='keywords.json')
+    parser.add_argument(
+        '-kw_batch_size', help='Keywords batch size', default=None)
+    parser.add_argument(
+        '-entities_path', help='Path for entities json', default='entities.json')
+    parser.add_argument(
+        '-relevance_path', help='Path for relevance json', default='relevance.json')
+    parser.add_argument(
+        '-relevance_label', help='Relevance label', default='invoice synset only')
+    parser.add_argument(
+        '-ref_synsets', help='Reference synsets', default=['invoice.n.01'])
+    parser.add_argument(
+        '-entity_pairs_path', help='Path for entity-pairs csv', default='person-org pairs.csv')
+    parser.add_argument(
+        '-to_from_pairs_path', help='Path for sender-recipient csv', default='to_from_pairs.csv')
+    parser.add_argument(
+        '-ranked_entities_path', help='Path to ranked entities. Will create if not found.', default='ranked_entities.txt')
+    parser.add_argument(
+        '-kw_args', help='Args for KeyBERT', default={'top_n': 10})
+    parser.add_argument(
+        '-get_kws', help='Whether to get keywords', default=True)
+    parser.add_argument(
+        '-get_entities', help='Whether to get entities', default=True)
+    parser.add_argument(
+        '-get_pairs', help='Whether to get person/org and to/from pairs', default=True)
+    args = parser.parse_args()
+    if args.get_kws:
+        get_keywords(args.kw_path,
+                     args.docs_folder,
+                     args.kw_args,
+                     batch_size=args.kw_batch_size)
 
-if GET_ENTITIES:
-    get_entities(
-        ENTITY_PATH,
-        DOCS_FOLDER,
-        KW_PATH,
-        RELEVANCE_PATH,
-        RELEVANCE_LABEL,
-        relevance_func=check_keywords_for_relevance,
-        relevance_func_args={
-            'ref_synsets': REF_SYNSETS
-        })
+    if args.get_entities:
+        get_entities(
+            args.entities_path,
+            args.docs_folder,
+            args.kw_path,
+            args.relevance_path,
+            args.relevance_label,
+            relevance_func=check_keywords_for_relevance,
+            relevance_func_args={
+                'ref_synsets': args.ref_synsets
+            })
 
-if GET_PERSON_ORG_PAIRS:
-    person_org_pairs = get_person_org_pairs(
-        RELEVANCE_LABEL,
-        RELEVANCE_PATH,
-        ENTITY_PATH,
-        KW_PATH,
-        EXCLUDE_WORDS
-    )
-    person_org_pairs.head(5000).to_csv(ENTITY_PAIRS_PATH)
-
-if GET_TO_FROM_PAIRS:
-    to_from_pairs = get_all_sender_recipient_pairs(
-        RELEVANCE_PATH, DOCS_FOLDER, RELEVANCE_LABEL)
-    to_from_pairs.head(5000).to_csv(TO_FROM_PAIRS_PATH)
+    if args.get_pairs:
+        person_org_pairs = get_person_org_pairs(
+            args.relevance_label,
+            args.docs_folder,
+            args.relevance_path,
+            args.entities_path,
+            args.kw_path,
+            args.ranked_entities_path
+        )
+        person_org_pairs.head(5000).to_csv(args.entity_pairs_path)
+        to_from_pairs = get_all_sender_recipient_pairs(
+            args.relevance_path,
+            args.docs_folder,
+            args.relevance_label)
+        to_from_pairs.head(5000).to_csv(args.to_from_pairs_path)
