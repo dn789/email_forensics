@@ -24,7 +24,6 @@ def get_messages_from_pst(pst_input, output_folder):
         to_process.append(pst_input)
     else:
         for f in os.listdir(pst_input):
-            # to_process.append(f'{pst_input}\\{f}')
             to_process.append(os.path.join(pst_input, f))
     for i, f in enumerate(to_process):
         print(f)
