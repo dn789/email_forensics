@@ -44,7 +44,10 @@ def walk_folder_for_messages(folder, output_folder, pst_id):
                     if header:
                         k, v = header.split(':', 1)
                         message[k] = v.strip()
-            message['body'] = i.plain_text_body.decode()
+            body = i.plain_text_body
+            if not body:
+                continue
+            message['body'] = body.decode()
             with open(os.path.join(output_folder, f'{pst_id}-{i.identifier}.json'), 'w', encoding='utf-8') as f:
                 json.dump(message, f)
         elif type(i) == pypff.folder:
