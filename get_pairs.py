@@ -26,7 +26,23 @@ import random
 from sklearn.feature_extraction.text import CountVectorizer
 from tqdm import tqdm
 
-from utils import make_email_dict_from_string
+
+def make_email_dict_from_string(email):
+    """Makes dict of headers, body from text string (eg. from Enron corpus)."""
+    email_dict = {}
+    header_lines, body = email.split('\n\n', 1)
+    header_lines = header_lines.split('\n')
+    headers = []
+    for line in header_lines:
+        if line.startswith('\t') or line.startswith(' '):
+            headers[-1] = headers[-1] + f' {line.strip()}'
+        else:
+            headers.append(line)
+    for header in headers:
+        k, v = header.split(':', 1)
+        email_dict[k] = v.strip()
+    email_dict['body'] = body
+    return email_dict
 
 
 class KwModel():
