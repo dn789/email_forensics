@@ -17,6 +17,7 @@ def get_messages_from_pst(pst_input, output_folder):
     pst_path : str
     output_folder : str
     """
+    errors = []
     if not os.path.isdir(output_folder):
         os.makedirs(output_folder, exist_ok=True)
     to_process = []
@@ -26,12 +27,18 @@ def get_messages_from_pst(pst_input, output_folder):
         for f in os.listdir(pst_input):
             to_process.append(os.path.join(pst_input, f))
     for i, f in enumerate(to_process):
-        print(f)
-        file_ = pypff.open(f)
-        root = file_.get_root_folder()
-        for x in root.sub_items:
-            walk_folder_for_messages(
-                x, output_folder=output_folder, pst_id=i)
+        try:
+            file_ = pypff.open(f)
+            root = file_.get_root_folder()
+            for x in root.sub_items:
+                walk_folder_for_messages(
+                    x, output_folder=output_folder, pst_id=i)
+        except OSError:
+            errors.append(f)
+    if errors:
+        print(f'List of unopened files saved to: errors_for_{output_folder}')
+        with open(f'errors_for_{output_folder}', 'w') as f_:
+            f_.write('\n'.join(errors))
 
 
 def walk_folder_for_messages(folder, output_folder, pst_id):
@@ -42,8 +49,11 @@ def walk_folder_for_messages(folder, output_folder, pst_id):
                 headers = i.transport_headers.split('\r\n')
                 for header in headers:
                     if header:
-                        k, v = header.split(':', 1)
-                        message[k] = v.strip()
+                        try:
+                            k, v = header.split(':', 1)
+                            message[k] = v.strip()
+                        except ValueError:
+                            pass
             body = i.plain_text_body
             if not body:
                 continue
