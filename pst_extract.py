@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 
+from bs4 import BeautifulSoup
 import pypff
 
 
@@ -54,10 +55,16 @@ def walk_folder_for_messages(folder, output_folder, pst_id):
                             message[k] = v.strip()
                         except ValueError:
                             pass
-            body = i.plain_text_body
-            if not body:
-                continue
-            message['body'] = body.decode()
+
+            if html := i.html_body:
+                message['body'] = BeautifulSoup(html, 'lxml').text
+            elif plain_text := i.plain_text_body:
+                message['body'] = plain_text.decode(errors='ignore')
+            elif rtf := i.plain_text_body:
+                message['body'] = rtf.decode(errors='ignore')
+            else:
+                message['body'] = ''
+
             with open(os.path.join(output_folder, f'{pst_id}-{i.identifier}.json'), 'w', encoding='utf-8') as f:
                 json.dump(message, f)
         elif type(i) == pypff.folder:
