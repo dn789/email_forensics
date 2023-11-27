@@ -22,9 +22,18 @@ from nltk.corpus import wordnet as wn
 import pandas as pd
 import plotly.express as px
 import random
-# from sklearn.feature_extraction import text
 from sklearn.feature_extraction.text import CountVectorizer
 from tqdm import tqdm
+
+
+def setup_dict(docs_folder, emails_only=True):
+    d = {}
+    for root, dirs, files in os.walk(docs_folder):
+        for f in files:
+            if emails_only and not f.endswith('Note.json'):
+                continue
+            d[os.path.join(root, f)] = {}
+    return d
 
 
 def make_email_dict_from_string(email):
@@ -140,45 +149,50 @@ def get_keywords(filename, docs_folder, kw_kwargs={}, batch_size=None):
         Pass batches of n docs to KeyBERT at once (faster).
     """
     if os.path.isfile(filename):
-        kw_dict = json.load(open(filename))
+        with open(filename) as f:
+            kw_dict = json.load(f)
     else:
-        kw_dict = {f: None for f in os.listdir(docs_folder)}
+        kw_dict = setup_dict(docs_folder)
 
     kw_model = KwModel(kw_kwargs)
     added = False
     if not batch_size:
-        for i, (f, v) in tqdm(list(enumerate(kw_dict.items())), 'Getting keywords...'):
+        for i, (p, v) in tqdm(list(enumerate(kw_dict.items())), 'Getting keywords...'):
             if i and not i % 500 and added:
-                json.dump(kw_dict, open(filename, 'w'))
+                with open(filename, 'w') as f:
+                    json.dump(kw_dict, f)
             if v:
                 continue
-            with open(os.path.join(docs_folder, f), encoding='utf-8') as f_:
+            with open(p, encoding='utf-8') as f:
                 try:
-                    if f.endswith('json'):
-                        doc = json.load(f_)['body'].strip()
-                    else:
-                        doc = f_.read().split('\n\n')[-1].strip()
+                    doc = json.load(f).get('bodyText', '').strip()
+                    if not doc:
+                        kw_dict[p] = {'skip': True}
+                        continue
                 except UnicodeDecodeError:
-                    kw_dict[f] = {'skip': True}
+                    kw_dict[p] = {'skip': True}
                     continue
             try:
                 kw_sets = kw_model(doc)
-                kw_dict[f] = kw_sets
+                kw_dict[p] = kw_sets
                 added = True
             except Exception:
-                kw_dict[f] = []
-        json.dump(kw_dict, open(filename, 'w'))
+                kw_dict[p] = []
+        with open(filename, 'w') as f:
+            json.dump(kw_dict, f)
     else:
-        filenames = list(kw_dict.keys())
-        filenames = [f for f in filenames if not kw_dict[f]]
-        f_batches = [filenames[i:i + batch_size]
-                     for i in range(0, len(filenames), batch_size)]
-        for f_batch in tqdm(f_batches, f'Getting keywords from batches of {batch_size} docs...'):
-            docs = [open(os.path.join(docs_folder, f)).read() for f in f_batch]
+        paths = list(kw_dict.keys())
+        paths = [f for f in paths if not kw_dict[f]]
+        batches = [paths[i:i + batch_size]
+                   for i in range(0, len(paths), batch_size)]
+        for batch in tqdm(batches, f'Getting keywords from batches of {batch_size} docs...'):
+            with open(p) as f:
+                docs = [json.load(p).get('bodyText', '') for p in batch]
             kw_sets = kw_model(docs)
-            for f, keywords in zip(f_batch, kw_sets):
-                kw_dict[f] = keywords
-            json.dump(kw_dict, open(filename, 'w'))
+            for p, keywords in zip(batch, kw_sets):
+                kw_dict[p] = keywords
+            with open(filename, 'w') as f:
+                json.dump(kw_dict, f)
 
 
 def get_entities(filename,
@@ -215,57 +229,56 @@ def get_entities(filename,
         person pairs.
     """
     if os.path.isfile(filename):
-        entities_dict = json.load(
-            open(filename, encoding='utf-8'))
+        with open(filename) as f:
+            entities_dict = json.load(f)
     else:
-        entities_dict = {f: {} for f in os.listdir(docs_folder)}
+        entities_dict = setup_dict(docs_folder)
 
     if os.path.isfile(relevance_json):
-        relevance_dict = json.load(
-            open(relevance_json, encoding='utf-8'))
+        with open(relevance_json) as f:
+            relevance_dict = json.load(f)
     else:
-        relevance_dict = {filename: {} for filename in os.listdir(docs_folder)}
-
-    kw_dict = json.load(
-        open(kw_json, encoding='utf-8'))
+        relevance_dict = setup_dict(docs_folder)
+    with open(kw_json) as f:
+        kw_dict = json.load(f)
 
     ner_model = NerTagger()
     added_entities, added_relevance = False, False
-    for i, (f, v) in tqdm(list(enumerate(entities_dict.items())), 'Getting entities...'):
-        if relevance_label in relevance_dict[f] or v.get('skip'):
+    for i, (p, v) in tqdm(list(enumerate(entities_dict.items())), 'Getting entities...'):
+        if relevance_label in relevance_dict[p] or v.get('skip'):
             continue
-        with open(os.path.join(docs_folder, f), encoding='utf-8') as f_:
+        with open(p, encoding='utf-8') as f_:
             try:
-                if f.endswith('json'):
-                    doc = json.load(f_)['body'].strip()
-                else:
-                    doc = f_.read().split('\n\n')[-1].strip()
+                doc = json.load(f_).get('bodyText', '').strip()
+                if not doc:
+                    v['skip'] = True
+                    continue
             except UnicodeDecodeError:
                 v['skip'] = True
                 continue
         if not doc:
             v['skip'] = True
             continue
-        if not relevance_func(f, kw_dict[f], **relevance_func_args):
+        if not relevance_func(p, kw_dict[p], **relevance_func_args):
             added_relevance = True
-            relevance_dict[f][relevance_label] = False
+            relevance_dict[p][relevance_label] = False
             continue
         added_relevance = True
-        relevance_dict[f][relevance_label] = True
+        relevance_dict[p][relevance_label] = True
         if not v:
-            entities_dict[f] = ner_model(doc, target_tags=target_tags)
+            entities_dict[p] = ner_model(doc, target_tags=target_tags)
             added_entities = True
         if i and not i % 500 and (added_entities or added_relevance):
             if added_entities:
-                json.dump(entities_dict, open(
-                    filename, 'w', encoding='utf-8'), default=list)
+                with open(filename, 'w') as f:
+                    json.dump(entities_dict, f, default=list)
             if added_relevance:
-                json.dump(relevance_dict, open(
-                    relevance_json, 'w', encoding='utf-8'), default=list)
-    json.dump(entities_dict, open(
-        filename, 'w', encoding='utf-8'), default=list)
-    json.dump(relevance_dict, open(
-        relevance_json, 'w', encoding='utf-8'), default=list)
+                with open(relevance_json, 'w') as f:
+                    json.dump(relevance_dict, f, default=list)
+    with open(filename, 'w') as f:
+        json.dump(entities_dict, f, default=list)
+    with open(relevance_json, 'w') as f:
+        json.dump(relevance_dict, f, default=list)
 
 
 def get_ranked_entities_from_file(proportion, entities_file):
@@ -298,23 +311,22 @@ def graph_entities(entities_json, top_n_entities=None, exclude=None):
     fig.show()
 
 
-def get_ranked_entities(folder, output):
+def get_ranked_entities(paths, output, emails_only=True):
     """
     Creates file of entities and their % of occurence in 1000 docs in folder.
     """
-    fs = os.listdir(folder)
-    random.shuffle(fs)
+
+    random.shuffle(paths)
     tagger = NerTagger()
     entities_d = Counter()
-    fs = fs[:5000]
-    doc_count = len(fs)
-    for f in tqdm(fs, f'Getting entities from {doc_count} random emails...'):
-        f_ = open(os.path.join(folder, f))
+    paths = paths[:1000]
+    doc_count = len(paths)
+    for p in tqdm(paths, f'Getting entities from {doc_count} random emails...'):
+        if emails_only and not p.endswith('Note.json'):
+            continue
         try:
-            if f.endswith('json'):
-                doc = json.load(f_)['body'].strip()
-            else:
-                doc = f_.read().split('\n\n')[-1].strip()
+            doc = json.load(open(p, encoding='utf-8')
+                            ).get('bodyText', '').strip()
         except UnicodeDecodeError:
             pass
         entities = tagger(doc)
@@ -329,7 +341,7 @@ def get_ranked_entities(folder, output):
         f.write('\n'.join(to_write))
 
 
-def get_person_org_pairs(relevance_label, docs_folder, relevance_json, entity_json, kw_json, ranked_entities_path=None):
+def get_person_org_pairs(relevance_label, relevance_json, entity_json, kw_json, ranked_entities_path=None):
     """
     Makes dataframe of:
     - person-org pairs
@@ -348,20 +360,20 @@ def get_person_org_pairs(relevance_label, docs_folder, relevance_json, entity_js
         Path to ranked entities % occurence in docs (all that occur in >= 5%
         of docs will bbe excluded)
     """
-    if os.path.isfile(ranked_entities_path):
-        exclude = get_ranked_entities_from_file(
-            .05, ranked_entities_path)
-    else:
-        get_ranked_entities(docs_folder, ranked_entities_path)
-        exclude = get_ranked_entities_from_file(
-            .05, ranked_entities_path)
-    exclude = exclude or []
     relevance_dict = json.load(
         open(relevance_json, encoding='utf-8'))
     entity_dict = json.load(
         open(entity_json, encoding='utf-8'))
     kw_dict = json.load(
         open(kw_json, encoding='utf-8'))
+    if os.path.isfile(ranked_entities_path):
+        exclude = get_ranked_entities_from_file(
+            .05, ranked_entities_path)
+    else:
+        get_ranked_entities(list(kw_dict.keys()), ranked_entities_path)
+        exclude = get_ranked_entities_from_file(
+            .05, ranked_entities_path)
+    exclude = exclude or []
     counts = Counter()
     pairs_ref = {}
     for f, v in relevance_dict.items():
@@ -393,6 +405,14 @@ def get_person_org_pairs(relevance_label, docs_folder, relevance_json, entity_js
     return df
 
 
+def get_orgs():
+    """
+    Use to get vendors if relevence criteria for person/org pairs is related 
+    to vendors.
+    """
+    pass
+
+
 def get_email_sender_and_recipients(email):
     """Gets sender and recpients from email dict or string."""
     if type(email) == str:
@@ -420,26 +440,23 @@ def get_email_sender_and_recipients(email):
     return sender_and_recipients
 
 
-def get_all_sender_recipient_pairs(relevance_json, docss_folder, relevance_label):
+def get_all_sender_recipient_pairs(relevance_json, relevance_label):
     pairs_dict = Counter()
     results_dict = json.load(open(relevance_json))
-    for f, v in results_dict.items():
-        if not v.get(relevance_label):
+    for p, v in results_dict.items():
+        if not p.endswith('NOTE.json') or not v.get(relevance_label):
             continue
         try:
-            path = os.path.join(docss_folder, f)
-            if f.endswith('json'):
-                email = json.load(open(path))
-            else:
-                email = open(path).read()
+            email = json.load(open(p))
         except UnicodeDecodeError:
             continue
-        sender_and_recipents = get_email_sender_and_recipients(email)
-        if not sender_and_recipents:
+        sender = email.get('senderEmailAddress')
+        recipients = [r.get('smtpAddress')
+                      for r in email.get('recipients', [])]
+        if not sender or not recipients:
             continue
-        sender = sender_and_recipents['sender']
-        for recipient in sender_and_recipents['recipients']:
-            pairs_dict[(sender['address'], recipient['address'])] += 1
+        for recipient in recipients:
+            pairs_dict[sender, recipient] += 1
             # k = f'{sender["address"]}\t{recipient["address"]}'
             # pairs_dict[k] += 1  for pair, count in counts.most_common():
     d = {x: [] for x in ['sender', 'recipient', 'count']}
@@ -471,6 +488,8 @@ if __name__ == '__main__':
         '-ref_synsets', help='Reference synsets', default=['invoice.n.01'])
     parser.add_argument(
         '-entity_pairs_path', help='Path for entity-pairs csv', default='person-org pairs.csv')
+    parser.add_argument(
+        '-orgs-path', help='Path for orgs csv', default='orgs.csv')
     parser.add_argument(
         '-to_from_pairs_path', help='Path for sender-recipient csv', default='to_from_pairs.csv')
     parser.add_argument(
@@ -505,15 +524,18 @@ if __name__ == '__main__':
     if args.get_pairs:
         person_org_pairs = get_person_org_pairs(
             args.relevance_label,
-            args.docs_folder,
             args.relevance_path,
             args.entities_path,
             args.kw_path,
             args.ranked_entities_path
         )
         person_org_pairs.head(5000).to_csv(args.entity_pairs_path)
+        orgs = Counter(person_org_pairs.loc[:, 'org'])
+        orgs = {'org': list(orgs.keys()), 'count': list(orgs.values())}
+        orgs = pd.DataFrame(orgs)
+        orgs.sort_values(by='count', ascending=False).to_csv(args.orgs_path)
+
         to_from_pairs = get_all_sender_recipient_pairs(
             args.relevance_path,
-            args.docs_folder,
             args.relevance_label)
         to_from_pairs.head(5000).to_csv(args.to_from_pairs_path)
