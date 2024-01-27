@@ -1,5 +1,7 @@
 import argparse
+from ast import literal_eval
 from collections import Counter
+from difflib import SequenceMatcher
 import os
 import random
 
@@ -20,7 +22,8 @@ def make_ref_json(docs_folder, output):
     dump_json(d, output)
 
 
-def similarity_wordnet(keywords, ref_synsets, threshold=.8, metric=wn.wup_similarity, file_path=None):
+def similarity_wordnet(keywords, ref_synsets, metric=wn.wup_similarity, file_path=None):
+    best_score = 0
     for kw in keywords:
         for word in kw.split():
             synsets = wn.synsets(word)
@@ -29,18 +32,30 @@ def similarity_wordnet(keywords, ref_synsets, threshold=.8, metric=wn.wup_simila
             synset = synsets[0]
             for ref_synset in ref_synsets:
                 similarity = metric(synset, ref_synset)
-                if similarity >= threshold:
-                    return True
+                if best_score < similarity:
+                    best_score = similarity
+    return best_score
 
 
-def similarity_sbert_kw(keywords, model, ref_embeds, threshold=.6, metric=util.dot_score, file_path=None):
+def similarity_sbert_kw(keywords, model, ref_embeds, metric=util.dot_score, file_path=None):
+    best_score = 0
     for kw in keywords:
         words = kw.split()
         word_embeds = model.encode(words)
         for ref_embed in ref_embeds:
             scores = metric(ref_embed, word_embeds)[0].cpu().tolist()
-            if max(scores) >= threshold:
-                return True
+            max_scores = max(scores)
+            if best_score < max_scores:
+                best_score = max_scores
+    return best_score
+
+
+def symmetric_similarity(phrase1, phrase2, model, metric=util.dot_score):
+    phrase1emb = model.encode(phrase1)
+    phrase2emb = model.encode(phrase2)
+    score_temp = metric(phrase1emb, phrase2emb)[0].cpu()
+    score = score_temp.tolist()[0]
+    return score
 
 
 def get_keywords(ref_path, kw_kwargs={}, batch_size=None):
@@ -107,6 +122,7 @@ def get_entities(ref_path,
                  filter_terms,
                  filter_func=similarity_wordnet,
                  filter_func_args={},
+                 filter_threshold=.75,
                  target_tags=('ORG', 'PER')
                  ):
 
@@ -138,13 +154,11 @@ def get_entities(ref_path,
             continue
 
         filter_func_args['file_path'] = file_path
-        if not filter_func(data['keywords'], **filter_func_args):
-            data['filter'][filter_label] = False
-            updated = True
-            continue
+        score = filter_func(data['keywords'], **filter_func_args)
+        data['filter'][filter_label] = score
         updated = True
-        data['filter'][filter_label] = True
-
+        if score < filter_threshold:
+            continue
         if not data.get('entities'):
             data['entities'] = ner_model(doc, target_tags=target_tags)
             updated = True
@@ -155,59 +169,97 @@ def get_entities(ref_path,
 
 
 def load_ranked_orgs_by_min_proportion(file_path, proportion=.05):
-    df = pd.read_csv(file_path)
-    return df.loc[df['proportion'] > proportion, 'org'].tolist()
+    df = pd.read_csv(file_path, converters={'orgs': literal_eval})
+    orgs_list = df.loc[df['proportion'] > proportion, 'orgs'].tolist()
+    org_reps = df.loc[df['proportion'] > proportion, 'org_rep'].tolist()
+    orgs_set = set()
+    for orgs in orgs_list:
+        orgs_set.update(orgs)
+    return {'org_reps': org_reps, 'exclude': orgs_set}
 
 
-def get_ranked_orgs_random(ref_dict, output):
+def get_ranked_orgs_random(ref_dict, ref_path, output, n_docs=1000):
 
     paths = list(ref_dict.keys())
     random.shuffle(paths)
     tagger = NerTagger()
     orgs_dict = Counter()
-    paths = paths[:1000]
+    paths = paths[:n_docs]
 
-    for file_path in tqdm(paths, f'Getting entities from 1000 random docs...'):
+    if not n_docs:
+        n_docs = len(paths)
 
+    updated = False
+    for i, file_path in tqdm(list(enumerate(paths)), f'Getting entities from {n_docs} random docs...'):
+        data = ref_dict[file_path]
+        if data.get('skip'):
+            continue
         item = load_json(file_path) or {}
         doc = item.get('bodyText', '').strip()
         if not doc:
+            data['skip'] = True
             continue
         if 'entities' in ref_dict[file_path]:
-            orgs = ref_dict[file_path]['entities']['ORG']
+            orgs = data['entities']['ORG']
         else:
-            orgs = tagger(doc)['ORG']
-        for e in orgs:
-            orgs_dict[e] += 1
-    d = {'org': [], 'count': [], 'proportion': []}
-    for e, count in orgs_dict.most_common():
-        d['org'].append(e)
-        d['count'].append(count)
-        d['proportion'].append(count/1000)
+            entities = tagger(doc)
+            data['entities'] = entities
+            orgs = entities['ORG']
+            updated = True
+        if not i % 500 and updated:
+            dump_json(ref_dict, ref_path)
+            updated = False
+        for orgs_set in orgs:
+            orgs_dict[orgs_set] += 1
+    dump_json(ref_dict, ref_path)
+
+    merged_orgs = {}
+    for org, count in orgs_dict.most_common():
+        if org in merged_orgs:
+            continue
+        else:
+            for org_rep, org_dict in merged_orgs.items():
+                if SequenceMatcher(None, org, org_rep).ratio() >= .75:
+                    org_dict['orgs'].add(org)
+                    org_dict['count'] += count
+                    break
+            else:
+                merged_orgs[org] = {'orgs': {org}, 'count': count}
+
+    d = {'org_rep': [], 'orgs': [], 'count': [], 'proportion': []}
+    for org_rep, v in merged_orgs.items():
+        d['org_rep'].append(org_rep)
+        d['orgs'].append(list(v['orgs']))
+        d['count'].append(v['count'])
+        d['proportion'].append(v['count']/n_docs)
     df = pd.DataFrame(d)
+    df.sort_values('proportion')
     df.to_csv(output)
 
 
-def get_orgs_and_related_info(ref_path, filter_label, output, output_label=None):
+def get_orgs_and_related_info(ref_path, filter_label, filter_threshold, output):
     ref_dict = load_json(ref_path)
     ranked_entities_path = os.path.join(output, 'ranked_orgs_random.csv')
     if not os.path.isfile(ranked_entities_path):
-        get_ranked_orgs_random(ref_dict, ranked_entities_path)
-    exclude = load_ranked_orgs_by_min_proportion(
+        get_ranked_orgs_random(ref_dict, ref_path, ranked_entities_path)
+    exclude_dict = load_ranked_orgs_by_min_proportion(
         ranked_entities_path, .05)
-    exclude = exclude or []
+    excluded_orgs = exclude_dict['exclude'] or []
+    excluded_org_reps = exclude_dict['org_reps']
 
     orgs_counter = Counter()
+    per_counter = Counter()
     orgs_kws_counter = {}
     orgs_pers_counter = {}
 
     for file_path, data in ref_dict.items():
-        if not data.get('filter', {}).get(filter_label):
+        if data.get('filter', {}).get(filter_label, 0) < filter_threshold:
             continue
 
         entities = data['entities']
         orgs, people = entities.get('ORG', []), list(
             entities.get('PER', []).keys())
+        per_counter.update(people)
 
         if not orgs:
             continue
@@ -220,8 +272,16 @@ def get_orgs_and_related_info(ref_path, filter_label, output, output_label=None)
 
         keywords = data['keywords']
         for org in orgs:
-            if org in exclude:
+            if org in excluded_orgs:
                 continue
+            else:
+                cont = False
+                for org_rep in excluded_org_reps:
+                    if SequenceMatcher(None, org, org_rep).ratio() >= .75:
+                        cont = True
+                        break
+                if cont:
+                    continue
             orgs_counter[org] += 1
             orgs_kws_counter.setdefault(org, Counter())
             orgs_kws_counter[org].update(keywords)
@@ -230,6 +290,8 @@ def get_orgs_and_related_info(ref_path, filter_label, output, output_label=None)
 
     d = {x: [] for x in ['org', 'count', 'people', 'keywords']}
     for org, count in orgs_counter.most_common():
+        if orgs_counter[org] < per_counter[org]:
+            continue
         d['org'].append(org)
         d['count'].append(count)
         top_people = [x[0] for x in orgs_pers_counter[org].most_common(10)]
@@ -238,19 +300,18 @@ def get_orgs_and_related_info(ref_path, filter_label, output, output_label=None)
         d['keywords'].append('; '.join(top_keywords))
     df = pd.DataFrame(d)
 
-    if not output_label:
-        output_label = filter_label
+    output_f = f'orgs {filter_label} threshold_{filter_threshold}.csv'
     os.makedirs(os.path.join(output, 'output'), exist_ok=True)
-    df.to_csv(os.path.join(output, 'output', f'orgs {output_label}.csv'))
+    df.to_csv(os.path.join(output, 'output', output_f))
 
 
 def main(docs_folder,
          output,
-         output_label=None,
          filter_label='wordnet_invoice_related',
          filter_terms=['invoice.n.01'],
          filter_func=similarity_wordnet,
          filter_func_args={},
+         filter_threshold=.75,
          kw_kwargs={'top_n': 10},
          kw_batch_size=None,
          ):
@@ -261,9 +322,9 @@ def main(docs_folder,
         make_ref_json(docs_folder, ref_path)
     get_keywords(ref_path, kw_kwargs=kw_kwargs, batch_size=kw_batch_size)
     get_entities(ref_path, filter_label, filter_terms,
-                 filter_func, filter_func_args=filter_func_args)
-    get_orgs_and_related_info(ref_path, filter_label,
-                              output, output_label=output_label)
+                 filter_func, filter_func_args=filter_func_args, filter_threshold=filter_threshold)
+    get_orgs_and_related_info(ref_path, filter_label, filter_threshold,
+                              output)
     print('\nFinished.')
 
 
@@ -284,6 +345,10 @@ if __name__ == '__main__':
     parser.add_argument(
         '-filter_func', help='Filter function', default=similarity_wordnet)
     parser.add_argument(
+        '-filter_func_args', help='Filter function arguments', default=similarity_wordnet)
+    parser.add_argument(
+        '-filter_threshold', help='Filter function threshold', default=similarity_wordnet)
+    parser.add_argument(
         '-kw_kwargs', help='Args for KeyBERT', default={'top_n': 10})
     parser.add_argument(
         '-get_kws', help='Whether to get keywords', default=True)
@@ -297,6 +362,7 @@ if __name__ == '__main__':
             args.filter_terms,
             args.filter_func,
             args.filter_func_args,
+            args.filter_threshold,
             kw_kwargs=args.kw_kwargs,
             kw_batch_size=args.kw_batch_size,
         )
