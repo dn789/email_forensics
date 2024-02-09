@@ -1,6 +1,5 @@
 import os
 import json
-import os
 import re
 
 
@@ -25,7 +24,14 @@ def load_json(*path):
 def find_email_addresses(string):
     addresses = re.findall(
         r'[a-zA-z0-9\.\_\-]+@[a-zA-z0-9\.\_\-]+\.[a-zA-z0-9]+', string)
-    return [a.lower() for a in addresses]
+    return set([a.lower() for a in addresses if a])
+
+
+def find_urls(string):
+    """Returns dict of domain, list of urls of domain. """
+    url_pattern = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))"
+    urls = re.findall(url_pattern, string)
+    return set([''.join(url).lower() for url in urls])
 
 
 def get_sender(email):
