@@ -3,6 +3,7 @@ from ast import literal_eval
 from collections import Counter
 from difflib import SequenceMatcher
 import os
+import pickle
 import random
 
 from nltk.corpus import wordnet as wn
@@ -16,13 +17,15 @@ from utils import dump_json, load_json, get_sender, get_recipients
 
 def make_ref_json(docs_folder, output):
     d = {}
+    i = 0
     for root, dirs, files in os.walk(docs_folder):
         for f in files:
-            d[os.path.join(root, f)] = {}
+            d[os.path.join(root, f)] = {'index': i}
+            i += 1
     dump_json(d, output)
 
 
-def similarity_wordnet(keywords, ref_synsets, metric=wn.wup_similarity, file_path=None):
+def similarity_wordnet(keywords, ref_synsets, metric=wn.wup_similarity, **kwargs):
     best_score = 0
     for kw in keywords:
         for word in kw.split():
@@ -37,7 +40,7 @@ def similarity_wordnet(keywords, ref_synsets, metric=wn.wup_similarity, file_pat
     return best_score
 
 
-def similarity_sbert_kw(keywords, model, ref_embeds, metric=util.dot_score, file_path=None):
+def semantic_search_kw(keywords, model, ref_embeds, metric=util.cos_sim, **kwargs):
     best_score = 0
     for kw in keywords:
         words = kw.split()
@@ -50,26 +53,14 @@ def similarity_sbert_kw(keywords, model, ref_embeds, metric=util.dot_score, file
     return best_score
 
 
-def symmetric_similarity(phrase1, phrase2, model, metric=util.dot_score):
-    phrase1emb = model.encode(phrase1)
-    phrase2emb = model.encode(phrase2)
-    score_temp = metric(phrase1emb, phrase2emb)[0].cpu()
-    score = score_temp.tolist()[0]
-    return score
+def semantic_search_doc(doc_embed, ref_embeds, metric=util.cos_sim, **kwargs):
+    scores = []
+    for ref_embed in ref_embeds:
+        scores.append(metric(ref_embed, doc_embed)[0].cpu().tolist()[0])
+    return max(scores)
 
 
 def get_keywords(ref_path, kw_kwargs={}, batch_size=None):
-    """
-    Get keywords for docs in folder using KeyBERT.
-
-    Parameters
-    ----------
-    ref_path : str
-    kw_kwargs : dict
-        KeyBERT model args. 
-    batch_size : int
-        Pass batches of n docs to KeyBERT at once (faster).
-    """
     ref_dict = load_json(ref_path)
     kw_model = KwModel(kw_kwargs)
 
@@ -118,49 +109,63 @@ def get_keywords(ref_path, kw_kwargs={}, batch_size=None):
 
 
 def get_entities(ref_path,
+                 output,
                  filter_label,
-                 filter_terms,
-                 filter_func=similarity_wordnet,
-                 filter_func_args={},
-                 filter_threshold=.75,
-                 target_tags=('ORG', 'PER')
+                 filter_func,
+                 filter_func_args,
                  ):
-
     ref_dict = load_json(ref_path)
 
     ner_model = NerTagger()
 
-    if filter_func == similarity_sbert_kw:
-        sbertmodel = SentenceTransformer('all-mpnet-base-v2')
-        filter_func_args['model'] = sbertmodel
-        filter_func_args['ref_embeds'] = sbertmodel.encode(
-            filter_terms)
+    if filter_func == semantic_search_doc:
+        doc_embeds_path = os.path.join(
+            output, 'util', f'{filter_func_args["model_name"]}_doc_embeds.pkl')
 
-    if filter_func == similarity_wordnet:
-        filter_func_args['ref_synsets'] = [
-            wn.synset(name) for name in filter_terms]
+        if os.path.isfile(doc_embeds_path):
+            with open(doc_embeds_path, 'rb') as f:
+                doc_embeds = pickle.load(f)
+        else:
+            file_paths = ref_dict.keys()
+            docs = [load_json(f).get('bodyText', '').strip()
+                    for f in file_paths]
+            print('Encoding docs. This might take a while...')
+            doc_embeds = filter_func_args['model'].encode(docs)
+            with open(doc_embeds_path, "wb") as fOut:
+                pickle.dump(doc_embeds, fOut, protocol=pickle.HIGHEST_PROTOCOL)
 
     updated = False
 
     for i, (file_path, data) in tqdm(list(enumerate(ref_dict.items())), 'Getting entities...'):
-        if filter_label in data.get('filter', {}) or data.get('skip'):
+        if data.get('skip'):
             continue
 
-        data.setdefault('filter', {})
-        item = load_json(file_path) or {}
-        doc = item.get('bodyText', '').strip()
-        if not doc:
-            ref_dict[file_path] = {'skip': True}
-            continue
+        if filter_label not in data.get('filter', {}):
+            data.setdefault('filter', {})
+            item = load_json(file_path) or {}
+            doc = item.get('bodyText', '').strip()
+            if not doc:
+                ref_dict[file_path] = {'skip': True}
+                continue
 
-        filter_func_args['file_path'] = file_path
-        score = filter_func(data['keywords'], **filter_func_args)
-        data['filter'][filter_label] = score
-        updated = True
-        if score < filter_threshold:
+            if filter_func == semantic_search_doc:
+                score = filter_func(
+                    doc_embeds[data['index']], **filter_func_args)
+            else:
+                score = filter_func(data['keywords'], **filter_func_args)
+            data['filter'][filter_label] = score
+            updated = True
+        else:
+            score = data['filter'][filter_label]
+        if score < filter_func_args['threshold']:
             continue
         if not data.get('entities'):
-            data['entities'] = ner_model(doc, target_tags=target_tags)
+            item = load_json(file_path) or {}
+            doc = item.get('bodyText', '').strip()
+            if not doc:
+                ref_dict[file_path] = {'skip': True}
+                continue
+            data['entities'] = ner_model(doc)
             updated = True
         if i and not i % 500 and updated:
             dump_json(ref_dict, ref_path, default=list)
@@ -179,7 +184,6 @@ def load_ranked_orgs_by_min_proportion(file_path, proportion=.05):
 
 
 def get_ranked_orgs_random(ref_dict, ref_path, output, n_docs=1000):
-
     paths = list(ref_dict.keys())
     random.shuffle(paths)
     tagger = NerTagger()
@@ -239,7 +243,8 @@ def get_ranked_orgs_random(ref_dict, ref_path, output, n_docs=1000):
 
 def get_orgs_and_related_info(ref_path, filter_label, filter_threshold, output):
     ref_dict = load_json(ref_path)
-    ranked_entities_path = os.path.join(output, 'ranked_orgs_random.csv')
+    ranked_entities_path = os.path.join(
+        output, 'util', 'ranked_orgs_random.csv')
     if not os.path.isfile(ranked_entities_path):
         get_ranked_orgs_random(ref_dict, ref_path, ranked_entities_path)
     exclude_dict = load_ranked_orgs_by_min_proportion(
@@ -255,10 +260,13 @@ def get_orgs_and_related_info(ref_path, filter_label, filter_threshold, output):
     for file_path, data in ref_dict.items():
         if data.get('filter', {}).get(filter_label, 0) < filter_threshold:
             continue
-
-        entities = data['entities']
+        entities = data.get('entities')
+        if not entities:
+            print(file_path)
+            continue
         orgs, people = entities.get('ORG', []), list(
             entities.get('PER', []).keys())
+
         per_counter.update(people)
 
         if not orgs:
@@ -266,11 +274,12 @@ def get_orgs_and_related_info(ref_path, filter_label, filter_threshold, output):
 
         item = load_json(file_path)
         sender_name = get_sender(item)[0]
-        recipient_names = [r[0] for r in get_recipients(item)]
-        people.append(sender_name)
+        recipient_names = [r[0] for r in get_recipients(item) if r[0]]
+        if sender_name:
+            people.append(sender_name)
         people.extend(recipient_names)
 
-        keywords = data['keywords']
+        keywords = data.get('keywords', [])
         for org in orgs:
             if org in excluded_orgs:
                 continue
@@ -296,62 +305,134 @@ def get_orgs_and_related_info(ref_path, filter_label, filter_threshold, output):
         d['count'].append(count)
         top_people = [x[0] for x in orgs_pers_counter[org].most_common(10)]
         d['people'].append('; '.join(top_people))
-        top_keywords = [x[0] for x in orgs_kws_counter[org].most_common(10)]
+        top_keywords = [x[0]
+                        for x in orgs_kws_counter[org].most_common(10)]
         d['keywords'].append('; '.join(top_keywords))
+    if not any(d['keywords']):
+        d.pop('keywords')
     df = pd.DataFrame(d)
 
-    output_f = f'orgs {filter_label} threshold_{filter_threshold}.csv'
-    os.makedirs(os.path.join(output, 'output'), exist_ok=True)
-    df.to_csv(os.path.join(output, 'output', output_f))
+    output_f = f'{filter_label} threshold_{filter_threshold}.csv'
+    df.to_csv(os.path.join(output, output_f))
 
 
 def main(docs_folder,
          output,
-         filter_label='wordnet_invoice_related',
-         filter_terms=['invoice.n.01'],
-         filter_func=similarity_wordnet,
+         filter_terms=['invoice', 'payment', 'vendor'],
+         filter_func=semantic_search_doc,
          filter_func_args={},
-         filter_threshold=.75,
          kw_kwargs={'top_n': 10},
          kw_batch_size=None,
          ):
+    """Gets named organization entities from relevant emails.
+    Saves output to a csv file with the name of the config. 
 
-    os.makedirs(output, exist_ok=True)
-    ref_path = os.path.join(output, 'ref.json')
+    Parameters
+    ----------
+    docs_folder : str
+        Path to folder containing extracted PST file contents.
+    output : str
+        Path.
+    filter_terms : list, optional
+        Terms used to find relevant emails, 
+        default ['invoice', 'payment', 'vendor']
+    filter_func : func, optional
+        Function used to compare filter_terms and email text/keywords:
+            - semantic_search_doc : Asymmetric semantic search comparing
+                filter_terms with email text.
+            - semantic_search_kw : Symmetric semantic search comparing
+                filter_terms with email keywords.
+            - similarity_wordnet : Compares filter_terms with WordNet synsets
+                of email keywords. filter_terms must be a list of WordNet
+                synsets (see https://www.nltk.org/howto/wordnet.html)
+    filter_func_args : dict, optional
+        Each filter_func has its own default args (see beginning of function). 
+        Only use this when overriding those :
+            - model_name (semantic_search_*) : Use asymmetric semantic
+                search models for semantic_search_doc and symmetric ones
+                for semantic_search_kw. Make sure to use the appropriate 
+                metric for the specified model (see sentence_transformer 
+                documentation for more info).
+            - metric : Similarity metric.
+                wn.wup_similarity (similarity_wordnet) : 0 to 1
+                util.cos_sim (semantic_search_*) : -1 to 1
+                util.dot_score (semantic_search_*) : Test model on huggingface 
+                to determine a reasonable threshold.
+            - threshold : Threshold to determine relevance.
+
+    kw_kwargs : dict, optional
+        Args for keywords extraction, default {'top_n': 10}
+    kw_batch_size : int, optional
+        Batch size for keyword extraction, by default None
+    """
+
+    if filter_func == similarity_wordnet:
+        filter_func_args['model_name'] = 'wordnet_synsets'
+        filter_func_args['ref_synsets'] = [
+            wn.synset(name) for name in filter_terms]
+        filter_func_args['metric'] = filter_func_args.get(
+            'metric', wn.wup_similarity,)
+        filter_func_args['threshold'] = filter_func_args.get(
+            'threshold', .9)
+
+    if filter_func == semantic_search_kw:
+        filter_func_args['model_name'] = filter_func_args.get(
+            'model_name', 'all-mpnet-base-v2')
+        filter_func_args['model'] = SentenceTransformer(
+            filter_func_args['model_name'])
+        filter_func_args['metric'] = filter_func_args.get(
+            'metric', util.cos_sim)
+        filter_func_args['threshold'] = filter_func_args.get(
+            'threshold', .9)
+        filter_func_args['ref_embeds'] = filter_func_args['model'].encode(
+            filter_terms)
+
+    if filter_func == semantic_search_doc:
+        filter_func_args['model_name'] = filter_func_args.get(
+            'model_name', 'msmarco-distilbert-base-v4')
+        filter_func_args['model'] = SentenceTransformer(
+            filter_func_args['model_name'])
+        filter_func_args['metric'] = filter_func_args.get(
+            'metric', util.cos_sim)
+        filter_func_args['threshold'] = filter_func_args.get(
+            'threshold', .3)
+        filter_func_args['ref_embeds'] = filter_func_args['model'].encode(
+            filter_terms)
+
+    filter_label = f'{str(filter_func).split()[1]} {filter_func_args["model_name"]} filter_terms-{";".join(filter_terms)} {str(filter_func_args["metric"]).split()[1]}'
+
+    os.makedirs(os.path.join(output, 'util'), exist_ok=True)
+    ref_path = os.path.join(output, 'util', 'ref.json')
+
     if not os.path.isfile(ref_path):
         make_ref_json(docs_folder, ref_path)
-    get_keywords(ref_path, kw_kwargs=kw_kwargs, batch_size=kw_batch_size)
-    get_entities(ref_path, filter_label, filter_terms,
-                 filter_func, filter_func_args=filter_func_args, filter_threshold=filter_threshold)
-    get_orgs_and_related_info(ref_path, filter_label, filter_threshold,
+    if filter_func in (semantic_search_kw, similarity_wordnet):
+        get_keywords(ref_path,
+                     kw_kwargs,
+                     kw_batch_size)
+    get_entities(ref_path,
+                 output,
+                 filter_label,
+                 filter_func,
+                 filter_func_args)
+    get_orgs_and_related_info(ref_path,
+                              filter_label,
+                              filter_func_args['threshold'],
                               output)
     print('\nFinished.')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='')
-
+        description='See file for documentation')
+    parser.add_argument('docs_folder')
+    parser.add_argument('output')
     parser.add_argument(
-        'docs_folder', help='Folder containing extracted PST items (emails, etc.)')
-    parser.add_argument(
-        'output', help='Output folder')
-    parser.add_argument(
-        '-kw_batch_size', help='Keywords batch size', default=None)
-    parser.add_argument(
-        '-filter_label', help='Filter label', default='wordnet invoice related')
-    parser.add_argument(
-        '-filter_terms', help='Filter terms', default=['invoice.n.01'])
-    parser.add_argument(
-        '-filter_func', help='Filter function', default=similarity_wordnet)
-    parser.add_argument(
-        '-filter_func_args', help='Filter function arguments', default=similarity_wordnet)
-    parser.add_argument(
-        '-filter_threshold', help='Filter function threshold', default=similarity_wordnet)
-    parser.add_argument(
-        '-kw_kwargs', help='Args for KeyBERT', default={'top_n': 10})
-    parser.add_argument(
-        '-get_kws', help='Whether to get keywords', default=True)
+        '-filter_terms', default=['invoice', 'payment', 'vendor'])
+    parser.add_argument('-filter_func', default=semantic_search_doc)
+    parser.add_argument('-filter_func_args', default={})
+    parser.add_argument('-kw_kwargs', default={'top_n': 10})
+    parser.add_argument('-kw_batch_size', default=None)
     args = parser.parse_args()
 
     if args.get_kws:
