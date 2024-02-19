@@ -9,19 +9,17 @@ import random
 from nltk.corpus import wordnet as wn
 import pandas as pd
 from sentence_transformers import SentenceTransformer, util
+from thefuzz.process import fuzz
 from tqdm import tqdm
 
-from models import KwModel, NerTagger
+from models import KwModel, NerCompanyTagger
 from utils import dump_json, load_json, get_sender, get_recipients
 
 
-def make_ref_json(docs_folder, output):
+def make_ref_json(paths, output):
     d = {}
-    i = 0
-    for root, dirs, files in os.walk(docs_folder):
-        for f in files:
-            d[os.path.join(root, f)] = {'index': i}
-            i += 1
+    for i, path in enumerate(paths):
+        d[path] = {'index': i}
     dump_json(d, output)
 
 
@@ -74,7 +72,8 @@ def get_keywords(ref_path, kw_kwargs={}, batch_size=None):
             if 'keywords' in data or data.get('skip'):
                 continue
             item = load_json(file_path) or {}
-            doc = item.get('bodyText', '').strip()
+            doc = item.get('subject', '') + '\n\n' + \
+                item.get('bodyTextFiltered', '').strip()
             if not doc:
                 ref_dict[file_path] = {'skip': True}
                 continue
@@ -95,7 +94,8 @@ def get_keywords(ref_path, kw_kwargs={}, batch_size=None):
             docs = []
             for file_path in batch:
                 item = load_json(file_path) or {}
-                doc = item.get('bodyText', '').strip()
+                doc = item.get('subject', '') + '\n\n' + \
+                    item.get('bodyTextFiltered', '').strip()
                 if not doc:
                     ref_dict[file_path] = {'skip': True}
                     continue
@@ -109,26 +109,30 @@ def get_keywords(ref_path, kw_kwargs={}, batch_size=None):
 
 
 def get_entities(ref_path,
-                 output,
+                 util_folder,
                  filter_label,
                  filter_func,
                  filter_func_args,
                  ):
     ref_dict = load_json(ref_path)
 
-    ner_model = NerTagger()
+    ner_model = NerCompanyTagger()
 
     if filter_func == semantic_search_doc:
         doc_embeds_path = os.path.join(
-            output, 'util', f'{filter_func_args["model_name"]}_doc_embeds.pkl')
+            util_folder,  f'{filter_func_args["model_name"]}_doc_embeds.pkl')
 
         if os.path.isfile(doc_embeds_path):
             with open(doc_embeds_path, 'rb') as f:
                 doc_embeds = pickle.load(f)
         else:
             file_paths = ref_dict.keys()
-            docs = [load_json(f).get('bodyText', '').strip()
-                    for f in file_paths]
+            docs = []
+            for f in file_paths:
+                item = load_json(f)
+                docs.append(item.get('subject', '') + '\n\n' +
+                            item.get('bodyTextFiltered', '').strip())
+
             print('Encoding docs. This might take a while...')
             doc_embeds = filter_func_args['model'].encode(docs)
             with open(doc_embeds_path, "wb") as fOut:
@@ -143,7 +147,8 @@ def get_entities(ref_path,
         if filter_label not in data.get('filter', {}):
             data.setdefault('filter', {})
             item = load_json(file_path) or {}
-            doc = item.get('bodyText', '').strip()
+            doc = item.get('subject', '') + '\n\n' + \
+                item.get('bodyTextFiltered', '')
             if not doc:
                 ref_dict[file_path] = {'skip': True}
                 continue
@@ -161,7 +166,8 @@ def get_entities(ref_path,
             continue
         if not data.get('entities'):
             item = load_json(file_path) or {}
-            doc = item.get('bodyText', '').strip()
+            doc = item.get('subject', '') + '\n\n' + \
+                item.get('bodyTextFiltered', '')
             if not doc:
                 ref_dict[file_path] = {'skip': True}
                 continue
@@ -186,7 +192,7 @@ def load_ranked_orgs_by_min_proportion(file_path, proportion=.05):
 def get_ranked_orgs_random(ref_dict, ref_path, output, n_docs=1000):
     paths = list(ref_dict.keys())
     random.shuffle(paths)
-    tagger = NerTagger()
+    tagger = NerCompanyTagger()
     orgs_dict = Counter()
     paths = paths[:n_docs]
 
@@ -199,7 +205,8 @@ def get_ranked_orgs_random(ref_dict, ref_path, output, n_docs=1000):
         if data.get('skip'):
             continue
         item = load_json(file_path) or {}
-        doc = item.get('bodyText', '').strip()
+        doc = item.get('subject', '') + '\n\n' + \
+            item.get('bodyTextFiltered', '')
         if not doc:
             data['skip'] = True
             continue
@@ -221,9 +228,13 @@ def get_ranked_orgs_random(ref_dict, ref_path, output, n_docs=1000):
     for org, count in orgs_dict.most_common():
         if org in merged_orgs:
             continue
+        if len(org) < 5:
+            merged_orgs[org] = {'orgs': {org}, 'count': count}
         else:
             for org_rep, org_dict in merged_orgs.items():
-                if SequenceMatcher(None, org, org_rep).ratio() >= .75:
+                if len(org_rep) < 5:
+                    continue
+                if SequenceMatcher(None, org, org_rep).ratio() >= .8:
                     org_dict['orgs'].add(org)
                     org_dict['count'] += count
                     break
@@ -241,10 +252,10 @@ def get_ranked_orgs_random(ref_dict, ref_path, output, n_docs=1000):
     df.to_csv(output)
 
 
-def get_orgs_and_related_info(ref_path, filter_label, filter_threshold, output):
+def get_orgs_and_related_info(ref_path, filter_label, filter_threshold, output, util_folder):
     ref_dict = load_json(ref_path)
     ranked_entities_path = os.path.join(
-        output, 'util', 'ranked_orgs_random.csv')
+        util_folder, 'ranked_orgs_random.csv')
     if not os.path.isfile(ranked_entities_path):
         get_ranked_orgs_random(ref_dict, ref_path, ranked_entities_path)
     exclude_dict = load_ranked_orgs_by_min_proportion(
@@ -264,8 +275,8 @@ def get_orgs_and_related_info(ref_path, filter_label, filter_threshold, output):
         if not entities:
             print(file_path)
             continue
-        orgs, people = entities.get('ORG', []), list(
-            entities.get('PER', []).keys())
+        orgs, people = entities.get('ORG', {}), list(
+            entities.get('PER', {}).keys())
 
         per_counter.update(people)
 
@@ -313,11 +324,12 @@ def get_orgs_and_related_info(ref_path, filter_label, filter_threshold, output):
     df = pd.DataFrame(d)
 
     output_f = f'{filter_label} threshold_{filter_threshold}.csv'
-    df.to_csv(os.path.join(output, output_f))
+    df.to_csv(os.path.join(output,  output_f))
 
 
-def main(docs_folder,
+def main(paths,
          output,
+         util_folder,
          filter_terms=['invoice', 'payment', 'vendor'],
          filter_func=semantic_search_doc,
          filter_func_args={},
@@ -329,9 +341,11 @@ def main(docs_folder,
 
     Parameters
     ----------
-    docs_folder : str
-        Path to folder containing extracted PST file contents.
+    paths : list
+        Doc paths.
     output : str
+        Path.
+    util_folder : str
         Path.
     filter_terms : list, optional
         Terms used to find relevant emails, 
@@ -400,33 +414,32 @@ def main(docs_folder,
             filter_terms)
 
     filter_label = f'{str(filter_func).split()[1]} {filter_func_args["model_name"]} filter_terms-{";".join(filter_terms)} {str(filter_func_args["metric"]).split()[1]}'
-
-    os.makedirs(os.path.join(output, 'util'), exist_ok=True)
-    ref_path = os.path.join(output, 'util', 'ref.json')
+    ref_path = os.path.join(util_folder, 'doc_ref.json')
 
     if not os.path.isfile(ref_path):
-        make_ref_json(docs_folder, ref_path)
+        make_ref_json(paths, ref_path)
     if filter_func in (semantic_search_kw, similarity_wordnet):
         get_keywords(ref_path,
                      kw_kwargs,
                      kw_batch_size)
     get_entities(ref_path,
-                 output,
+                 util_folder,
                  filter_label,
                  filter_func,
                  filter_func_args)
     get_orgs_and_related_info(ref_path,
                               filter_label,
                               filter_func_args['threshold'],
-                              output)
-    print('\nFinished.')
+                              output,
+                              util_folder)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='See file for documentation')
-    parser.add_argument('docs_folder')
+    parser.add_argument('paths')
     parser.add_argument('output')
+    parser.add_argument('util_folder')
     parser.add_argument(
         '-filter_terms', default=['invoice', 'payment', 'vendor'])
     parser.add_argument('-filter_func', default=semantic_search_doc)
@@ -437,13 +450,12 @@ if __name__ == '__main__':
 
     if args.get_kws:
         main(
-            args.docs_folder,
+            args.paths,
             args.output,
-            args.filter_label,
+            args.util_folder,
             args.filter_terms,
             args.filter_func,
             args.filter_func_args,
-            args.filter_threshold,
             kw_kwargs=args.kw_kwargs,
             kw_batch_size=args.kw_batch_size,
         )
