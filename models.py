@@ -6,6 +6,7 @@ from keybert import KeyBERT
 from keyphrase_vectorizers import KeyphraseCountVectorizer
 from nltk import sent_tokenize
 from sklearn.feature_extraction.text import CountVectorizer
+from transformers import pipeline
 
 
 class KwModel():
@@ -35,15 +36,40 @@ class KwModel():
         return results
 
 
+class NerCompanyTagger():
+    def __init__(self) -> None:
+        self.model = pipeline('ner', "nbroad/deberta-v3-base-company-names")
+
+    def __call__(self, sent):
+        if len(sent) > 2400:
+            return {'ORG': []}
+        output = self.model(sent)
+        ents, current_ent = [], ''
+        for d in output:
+            if d['entity'].startswith('B'):
+                if current_ent:
+                    ents.append(current_ent.strip())
+                    current_ent = ''
+                current_ent += sent[d['start']:d['end']]
+            else:
+                current_ent += sent[d['start']:d['end']]
+        if current_ent:
+            ents.append(current_ent.strip())
+        return {'ORG': ents}
+
+
 class NerTagger():
     """Uses flair ontonotes NER to get named entities."""
 
     def __init__(self):
-        self.tagger = SequenceTagger.load("flair/ner-english-fast")
+        self.tagger = SequenceTagger.load("flair/ner-english")
 
-    def __call__(self, text, target_tags=('ORG', 'PER')):
+    def __call__(self, text, target_tags=('ORG', 'PER'), already_tokenized=False):
         tag_dict = {tag: {} for tag in target_tags}
-        sents = sent_tokenize(text)
+        if already_tokenized:
+            sents = text
+        else:
+            sents = sent_tokenize(text)
         for sent in sents:
             sent = Sentence(sent)
             self.tagger.predict(sent)
