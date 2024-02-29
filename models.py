@@ -1,7 +1,7 @@
 import re
 
-from flair.data import Sentence
-from flair.models import SequenceTagger
+# from flair.data import Sentence
+# from flair.models import SequenceTagger
 from keybert import KeyBERT
 from keyphrase_vectorizers import KeyphraseCountVectorizer
 from nltk import sent_tokenize
@@ -40,49 +40,52 @@ class NerCompanyTagger():
     def __init__(self) -> None:
         self.model = pipeline('ner', "nbroad/deberta-v3-base-company-names")
 
-    def __call__(self, sent):
-        if len(sent) > 2400:
-            return {'ORG': []}
-        output = self.model(sent)
+    def __call__(self, text: str) -> dict:
+        sents = sent_tokenize(text)
         ents, current_ent = [], ''
-        for d in output:
-            if d['entity'].startswith('B'):
-                if current_ent:
-                    ents.append(current_ent.strip())
-                    current_ent = ''
-                current_ent += sent[d['start']:d['end']]
-            else:
-                current_ent += sent[d['start']:d['end']]
-        if current_ent:
-            ents.append(current_ent.strip())
+        for sent in sents:
+            if len(sent) > 2400:
+                continue
+            output: list[dict] = self.model(sent)  # type: ignore
+            for d in output:
+                if d['entity'].startswith('B'):
+                    if current_ent:
+                        ents.append(current_ent.strip())
+                        current_ent = ''
+                    current_ent += sent[d['start']:d['end']]
+                else:
+                    current_ent += sent[d['start']:d['end']]
+            if current_ent:
+                ents.append(current_ent.strip())
+                current_ent = ''
         return {'ORG': ents}
 
 
-class NerTagger():
-    """Uses flair ontonotes NER to get named entities."""
+# class NerTagger():
+#     """Uses flair ontonotes NER to get named entities."""
 
-    def __init__(self):
-        self.tagger = SequenceTagger.load("flair/ner-english")
+#     def __init__(self):
+#         self.tagger = SequenceTagger.load("flair/ner-english")
 
-    def __call__(self, text, target_tags=('ORG', 'PER'), already_tokenized=False):
-        tag_dict = {tag: {} for tag in target_tags}
-        if already_tokenized:
-            sents = text
-        else:
-            sents = sent_tokenize(text)
-        for sent in sents:
-            sent = Sentence(sent)
-            self.tagger.predict(sent)
-            for entity in sent.get_spans('ner'):
-                if entity.tag in target_tags:
-                    tag_dict[entity.tag][entity.text] = None
-        text = text.replace('\n', ' ')
-        for tag, entity_dict in tag_dict.items():
-            for entity in entity_dict:
-                entity_pattern = re.escape(entity)
-                entity_dict[entity] = {
-                    'count': len(re.findall(
-                        rf'\b{entity_pattern}\b', text)),
-                    'tf-idf': None
-                }
-        return tag_dict
+#     def __call__(self, text, target_tags=('ORG', 'PER'), already_tokenized=False):
+#         tag_dict = {tag: {} for tag in target_tags}
+#         if already_tokenized:
+#             sents = text
+#         else:
+#             sents = sent_tokenize(text)
+#         for sent in sents:
+#             sent = Sentence(sent)
+#             self.tagger.predict(sent)
+#             for entity in sent.get_spans('ner'):
+#                 if entity.tag in target_tags:
+#                     tag_dict[entity.tag][entity.text] = None
+#         text = text.replace('\n', ' ')
+#         for tag, entity_dict in tag_dict.items():
+#             for entity in entity_dict:
+#                 entity_pattern = re.escape(entity)
+#                 entity_dict[entity] = {
+#                     'count': len(re.findall(
+#                         rf'\b{entity_pattern}\b', text)),
+#                     'tf-idf': None
+#                 }
+#         return tag_dict
