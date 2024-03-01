@@ -8,7 +8,6 @@ import random
 
 import pandas as pd
 from sentence_transformers import SentenceTransformer, util
-from thefuzz.process import fuzz
 from tqdm import tqdm
 
 from models import KwModel, NerCompanyTagger
@@ -100,7 +99,7 @@ def _get_entities(args):
     filtered_ref = args.doc_ref[args.doc_ref['embed_index'] >= 0]
 
     updated = False
-    for row in tqdm(list(filtered_ref.itertuples()), 'Getting entities'):
+    for row in tqdm(list(filtered_ref.itertuples()), f'Getting entities from docs filtered by {args.filter_terms}'):
         if not row.filters.get(args.filter_label):
             item = load_json(row.path)
             doc = item.get('subject', '') + '\n\n' + \

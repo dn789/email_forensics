@@ -4,6 +4,7 @@ Analyzes a company or organization's emails and other PST contents and saves res
 
 from collections import Counter, namedtuple
 from pathlib import Path
+from typing import Any
 import pickle
 
 import pandas as pd
@@ -61,23 +62,22 @@ class PSTAnalyzer():
         if not self.source.is_dir():
             raise FileNotFoundError(f'Input folder {self.source} not found.')
         self.output = Path(output)
-        self.args = args
-        self.semantic_model_name = args.get(
-            'semantic_model_name', 'msmarco-distilbert-base-v4')
 
         folders = {
             'util': '_util',
             'preprocessing': '_util/preprocessing',
             'doc_embeds': '_util/doc_embeds',
+            'entities': '_util/entities',
             'users': '',
             'email_addrs': '',
             'urls': '',
+            'phone_nums': '',
             'misc': '',
             'vendors': ''
         }
 
         util_files = {
-            'first_run_checklist': 'first_run_checklist.json',
+            'checklist': 'checklist.json',
             'doc_ref': 'doc_ref.pkl',
         }
 
@@ -95,37 +95,45 @@ class PSTAnalyzer():
         Paths = namedtuple('Paths', paths)
         self.paths = Paths(**paths)
 
-        # Check if running on folder for first time
-        self.first_run_checklist = load_json(
-            self.paths.first_run_checklist) or {}
-        if not self.first_run_checklist.get('first_run_complete'):
-            self._first_run()
-        else:
+        self.args = args
+        self.checklist = load_json(
+            self.paths.checklist) or {}
+
+        # Make or load doc ref.
+
+        if self.checklist.get('_make_doc_ref'):
             self.doc_ref = pd.read_pickle(self.paths.doc_ref)
-            self.load_semantic_model()
+        else:
+            self._make_doc_ref()
+            self.checklist['_make_doc_ref'] = True
+            dump_json(self.checklist, self.paths.checklist)
 
-    def _first_run(self) -> None:
-        first_run_items = {
-            '_make_doc_ref': None,
-            'preprocess': self.args.get('preprocess'),
-            'load_semantic_model': None,
-            'get_user_email_and_url_info': None,
-            'get_vendors': self.args.get('get_vendors'),
-        }
+        # Preprocess.
 
-        for func_name, args in first_run_items.items():
-            if not self.first_run_checklist.get(func_name):
-                if args:
-                    self.__getattribute__(func_name)(args)
-                else:
-                    self.__getattribute__(func_name)()
-                self.first_run_checklist[func_name] = True
-                dump_json(self.first_run_checklist,
-                          self.paths.first_run_checklist)
-            self.first_run_checklist['first_run_complete'] = True
+        if not self.checklist.get('preprocess'):
+            self.preprocess(**args.get('preprocess', {}))
+            self.checklist['preprocess'] = True
+            dump_json(self.checklist, self.paths.checklist)
 
-            dump_json(self.first_run_checklist,
-                      self.paths.first_run_checklist)
+        # Load semantic model and get doc embeddings.
+
+        self.semantic_model_name = args.get(
+            'semantic_model_name', 'msmarco-distilbert-base-v4')
+        self.load_semantic_model()
+        if not hasattr(self, 'doc_embeds'):
+            raise ValueError('Failed to get document embeddings.')
+
+        # Other checklist items.
+
+        if not self.checklist.get('get_user_email_and_url_info'):
+            self.get_user_email_and_url_info()
+            self.checklist['get_user_email_and_url_info'] = True
+            dump_json(self.checklist, self.paths.checklist)
+
+        if not self.checklist.get('get_vendors'):
+            self.get_vendors(**args.get('get_vendors', {}))
+            self.checklist['get_vendors'] = True
+            dump_json(self.checklist, self.paths.checklist)
 
     def _make_doc_ref(self) -> None:
         d = {
@@ -163,11 +171,11 @@ class PSTAnalyzer():
         df.to_pickle(self.paths.doc_ref)
         self.doc_ref = df
 
-    def preprocess(self, kwargs: dict | None = None) -> None:
+    def preprocess(self, **kwargs) -> None:
         print('\nPreprocessing docs...')
 
-        kwargs = kwargs or {}
-        preprocess_doc_bodies(self.doc_ref, self.paths.preprocessing, **kwargs)
+        preprocess_doc_bodies(
+            self.doc_ref, self.paths.preprocessing, **kwargs)
 
     def load_semantic_model(self,  model_name: str | None = None) -> None:
         self.semantic_model_name = model_name or self.semantic_model_name
@@ -201,29 +209,34 @@ class PSTAnalyzer():
     def get_user_email_and_url_info(self) -> None:
         print('\nGetting user, email address, and url info...')
 
-        self.usernames = set()
+        self.users = []
         self.email_addr_dict = {}
         self.urls = set()
         self.org_domains = set()
+        self.phone_numbers = {}
 
         # Processes each user's contents, gets email and url info
         for user_folder in tqdm(list(self.source.iterdir())):
             user = {
                 'name': user_folder.name,
                 'contacts': [],
-                'communicators': Counter()
+                'communicators': Counter(),
+                'phone numbers': set(),
+                'emails': set()
             }
 
-            self.usernames.add(user['name'])
+            self.users.append(user)
 
             for path in user_folder.rglob('*.json'):
                 if path.is_file():
-                    self._process_doc(path, user)
+                    self._process_doc_for_emails_and_urls(path, user)
 
             dump_json(user['contacts'], self.paths.users /
                       f'{user["name"]}_contacts.json', )
             dump_json(dict(user['communicators'].most_common(20)),
                       self.paths.users / f'{user["name"]}_top_communicatiors.json')
+
+        self.usernames = set([user['name'] for user in self.users])
 
         # Gets email addrs with organization's domain, saves addrs.
         org_email_dict = {}
@@ -232,7 +245,7 @@ class PSTAnalyzer():
                 domain = email_addr.split('@')[1]
                 if domain in self.org_domains:
                     org_email_dict[email_addr] = v
-                elif set(self.usernames) & v['names']:
+                elif self.usernames & v['names']:
                     if domain not in ('gmail.com', 'yahoo.com', 'hotmail.com'):
                         org_email_dict[email_addr] = v
                         self.org_domains.add(domain)
@@ -253,6 +266,10 @@ class PSTAnalyzer():
         dump_json(self.urls, self.paths.urls / 'all_urls.json', )
         dump_json(org_urls, self.paths.urls / 'org_urls.json', )
 
+        # Phone numbers
+        dump_json(self.phone_numbers, self.paths.phone_nums /
+                  'all_phone_nums.json')
+
         # Gets signatures from frequent text blocks that contain a phone number
         # and email address.
         signatures = set()
@@ -262,7 +279,17 @@ class PSTAnalyzer():
         dump_json(signatures, self.paths.misc /
                   'signatures.json', )
 
-    def _process_doc(self, path: Path, user: dict) -> None:
+        # Gets all emails associated with each user:
+        for user in self.users:
+            username = user['name']
+            for email, d in self.email_addr_dict.items():
+                # Fuzzy match ?
+                if username in d['names']:
+                    user['emails'].add(email)
+            dump_json(user['emails'], self.paths.users /
+                      f'{username}_emails.json')
+
+    def _process_doc_for_emails_and_urls(self, path: Path, user: dict) -> None:
         doc = load_json(path)
         try:
             doc_type = doc['messageClass']
@@ -295,8 +322,14 @@ class PSTAnalyzer():
             for addr in email_addrs:
                 self.email_addr_dict.setdefault(addr, {'names': set()})
             self.urls.update(find_urls(body))
+            phone_nums_w_context = find_phone_nums(body, context=True)
+            for match in phone_nums_w_context:
+                context1, phone_num, context2 = match
+                self.phone_numbers.setdefault(phone_num, {'contexts': set()})
+                self.phone_numbers[phone_num]['contexts'].add(
+                    f'{context1} [PHONE NUM] {context2}')
 
-    def get_orgs(self, filter_terms: list | None = None, output: Path | None = None, kwargs: dict | None = None) -> None:
+    def get_orgs(self, filter_terms: list | None = None, output: Path | None = None, **kwargs) -> None:
         output = output or self.output
         kwargs = kwargs or {}
         filter_model_name = kwargs.get(
@@ -304,27 +337,36 @@ class PSTAnalyzer():
         embeds_path = self.paths.doc_embeds / f'{filter_model_name}.pkl'
         if filter_terms:
             kwargs['filter_terms'] = filter_terms
-        get_entities(self.doc_ref, self.paths.doc_ref, output, self.paths.util,
+        get_entities(self.doc_ref, self.paths.doc_ref, output, self.paths.entities,
                      doc_embeds_path=embeds_path, **kwargs)
 
-    def get_vendors(self, kwargs: dict | None = None) -> None:
+    def get_vendors(self, **kwargs) -> None:
         print('\nGetting vendor names...')
-        kwargs = kwargs or {}
-        kwargs.setdefault('filter_terms', ['invoice', 'payment', 'vendor'])
-        self.get_orgs(output=self.paths.vendors, kwargs=kwargs)
+        kwargs.setdefault(
+            'filter_terms', ['invoice', 'payment', 'vendor'])
+        self.get_orgs(output=self.paths.vendors, **kwargs)
 
-    def search_docs(self, query: str, top_n: int = 10) -> None:
+    def _search_docs(self, query: str, save: bool = False) -> list[tuple[int, Any]]:
         query_embed = self.semantic_model.encode(query)
         scores = util.cos_sim(query_embed, self.doc_embeds)[  # type: ignore
             0].cpu().tolist()  # type: ignore
         embed_indices = range(len(self.doc_embeds))
-        doc_score_pairs = list(zip(embed_indices, scores))
-        doc_score_pairs = sorted(
-            doc_score_pairs, key=lambda x: x[1], reverse=True)
+        embed_i_score_pairs = list(zip(embed_indices, scores))
+        embed_i_score_pairs = sorted(
+            embed_i_score_pairs, key=lambda x: x[1], reverse=True)
 
-        for i, (embed_i, score) in enumerate(doc_score_pairs[:top_n]):
+        if save:
+            pass
+
+        return embed_i_score_pairs
+
+    def search_docs(self, query: str, top_n: int = 10) -> None:
+
+        embed_i_score_pairs = self._search_docs(query)
+
+        for i, (embed_i, score) in enumerate(embed_i_score_pairs[:top_n]):
             path = self.doc_ref.loc[self.doc_ref['embed_index']
-                                    == embed_i].iloc[0]['path']
+                                    == embed_i].iloc[0]['path']  # type: ignore
             body = load_json(path).get('bodyTextPreprocessed', '')
             print(f'RESULT {i + 1}:')
             print('---------\n')
