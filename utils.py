@@ -44,9 +44,14 @@ def find_urls(text: str) -> set[str]:
     return set([''.join(url).lower() for url in urls])
 
 
-def find_phone_nums(text: str) -> list[str]:
-    phone_num_pattern = r'[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}'
-    return re.findall(phone_num_pattern, text)
+def find_phone_nums(text: str, context: bool = False) -> list[str]:
+    if context:
+        phone_num_pattern = r'([\s\S]{,50})([\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6})([\s\S]{,50})'
+        return re.findall(phone_num_pattern, text)
+
+    else:
+        phone_num_pattern = r'[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}'
+        return re.findall(phone_num_pattern, text)
 
 
 def get_contact(contactItem: dict) -> dict | None:
