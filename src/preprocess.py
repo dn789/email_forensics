@@ -152,9 +152,7 @@ def remove_freq_matches_from_bodies(matches_to_remove: list[str],
                 body = body.replace(match_str, '')
 
         body = normalize_body_text_after_dedupe(body)
-        doc = load_json(path)
         add_preprocessed_body_text(path, body)
-        dump_json(doc, path)
 
 
 def preprocess_doc_bodies(
