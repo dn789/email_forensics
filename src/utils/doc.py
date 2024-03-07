@@ -1,4 +1,5 @@
 """Functions for PST items"""
+from email.utils import parseaddr
 from pathlib import Path, PurePath
 from typing import Any
 import re
@@ -21,21 +22,29 @@ def get_contact(contactItem: dict) -> dict | None:
 
 
 def get_sender(email: dict[str, Any]) -> dict[str, str | None]:
-    name = email.get('senderName', '')
-    addr = email.get('senderEmailAddress', '').lower()
-    if not addr:
-        if match := find_email_addresses(name):
-            match, = match
-            addr = match[0].lower()
+    if from_str := email.get('From'):
+        name, addr = parseaddr(from_str)
+    else:
+        name = email.get('senderName', '')
+        addr = email.get('senderEmailAddress', '').lower()
+        if not addr:
+            if match := find_email_addresses(name):
+                match, = match
+                addr = match[0].lower()
     return {'name': name, 'addr': addr}
 
 
 def get_recipients(email: dict[str, Any]) -> list[dict[str, str | None]]:
     recipients = []
-    for r in email.get('recipients', []):
-        recipients.append({'name': None, 'addr': r['smtpAddress'].lower()})
-    if len(recipients) == 1:
-        recipients[0]['name'] = email.get('displayTo')
+    if r_list := email.get('recipients'):
+        for r in r_list:
+            recipients.append({'name': None, 'addr': r['smtpAddress'].lower()})
+        if len(recipients) == 1:
+            recipients[0]['name'] = email.get('displayTo')
+    elif r_str := email.get('To'):
+        for raw_addr in r_str.split(','):
+            name, addr = parseaddr(raw_addr)
+            recipients.append({'name': name, 'addr': addr.lower()})
     return recipients
 
 
@@ -52,7 +61,7 @@ def get_body_text(doc: Path | dict, incl_subj: bool = False, preprocessed: bool 
 
 def add_preprocessed_body_text(doc_path: Path, body_text: str) -> None:
     email_d = load_json(doc_path)
-    email_d['bodyTextPreprocssed'] = body_text
+    email_d['bodyTextPreprocessed'] = body_text
     dump_json(email_d, doc_path)
 
 
