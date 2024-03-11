@@ -1,0 +1,7 @@
+{
+    "source": "../../psts/backup.pst",
+    "project_folder": "../testing/test",
+    "get_vendors": {},
+    "preprocess": {},
+    "semantic_model_name": "msmarco-distilbert-base-v4"
+}

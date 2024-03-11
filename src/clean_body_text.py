@@ -155,7 +155,7 @@ def remove_freq_matches_from_bodies(matches_to_remove: list[str],
         add_preprocessed_body_text(path, body)
 
 
-def preprocess_doc_bodies(
+def clean_body_text(
         doc_ref: DocRef,
         util_folder: Path,
         min_match_size=100,

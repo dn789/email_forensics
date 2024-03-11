@@ -32,7 +32,7 @@ const removeKeys = [
 function processPST(input, output) {
   const pstFile = new PSTFile(input);
   let pstName = pstFile.getMessageStore().displayName;
-  console.log("Extracting files from " + pstName + "...");
+  console.log("Extracting files from PST file \"" + pstName + "\"...");
   let currOutput = path.join(output, pstName);
   mkdirSync(currOutput, { recursive: true });
   processFolder(pstFile.getRootFolder(), currOutput);
@@ -78,7 +78,7 @@ function saveItem(item, output, i) {
         itemObj.bodyText = htmlToText(item.bodyHTML);
       }
     }
-  } catch (err) {}
+  } catch (err) { }
 
   let recipients = [];
   [...Array(item.numberOfRecipients).keys()].forEach((r) => {
@@ -109,30 +109,10 @@ function htmlToText(HTML) {
 // Command line
 let input = process.argv[2];
 let output = process.argv[3];
-let toProcess = [];
+
 
 try {
-  let stats = statSync(input);
-  if (stats.isFile()) {
-    toProcess.push(input);
-  } else if (stats.isDirectory()) {
-    readdirSync(input).forEach((f) => {
-      let currInput = path.join(input, f);
-      toProcess.push(currInput);
-    });
-  }
+  processPST(input, output);
 } catch (err) {
-  throw new Error("Input file or folder not found!");
+  console.log("Error opening " + pst);
 }
-
-if (!output) {
-  throw new Error("No output folder provided!");
-}
-
-toProcess.forEach((pst) => {
-  try {
-    processPST(pst, output);
-  } catch (err) {
-    console.log("Error opening " + pst);
-  }
-});

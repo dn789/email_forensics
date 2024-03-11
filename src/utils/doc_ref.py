@@ -11,8 +11,8 @@ from utils.io import load_json
 
 
 class DocRef:
-    def __init__(self, source_folder: Path, ref_path: Path) -> None:
-        self.source_folder = source_folder
+    def __init__(self, docs_folder: Path, ref_path: Path) -> None:
+        self.docs_folder = docs_folder
         self.path = ref_path
         if ref_path.is_file():
             self.df = pd.read_pickle(ref_path)
@@ -37,7 +37,7 @@ class DocRef:
 
         i = 0
         body_texts = set()
-        for path in self.source_folder.rglob('*.json'):
+        for path in self.docs_folder.rglob('*.json'):
             if not path.is_file():
                 continue
             d['path'].append(path)

@@ -8,13 +8,13 @@ from utils.doc import get_body_text
 
 
 class SemanticModel:
-    def __init__(self, model_name: str, embeds_path: Path, doc_ref: DocRef) -> None:
-        self.model_name = model_name
-        self.embeds_path = embeds_path
-        self.model = SentenceTransformer(model_name)
+    def __init__(self, name: str, embeds_folder: Path, doc_ref: DocRef) -> None:
+        self.name = name
+        self.embeds_path = embeds_folder / f'{self.name}.pkl'
+        self.model = SentenceTransformer(name)
         self.doc_ref = doc_ref
 
-        if not embeds_path.is_file():
+        if not self.embeds_path.is_file():
             self.encode_docs()
         else:
             self.load_doc_embeds()
@@ -37,7 +37,7 @@ class SemanticModel:
         with open(self.embeds_path, 'rb') as f:
             self.doc_embeds = pickle.load(f)
 
-    def query_docs(self, query: str | list[str], query_label: str, save: bool = False) -> None:
+    def query_docs(self, query: str | list[str], query_label: str, save: bool = False, show_top_n: bool | int = False) -> None:
         if type(query) == str:
             query = [query]
         all_scores = []
@@ -53,3 +53,12 @@ class SemanticModel:
                            0 else None for embed_index in df['embed_index']]
         if save:
             self.doc_ref.save()
+
+        if show_top_n:
+            paths = df.nlargest(show_top_n, query_label).index
+            for i, path in enumerate(paths):
+                body = get_body_text(path)
+                print(f'RESULT {i + 1}:')
+                print('---------\n')
+                print(body.strip())
+                print(f'\n{"="*75}\n')
