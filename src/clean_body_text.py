@@ -9,12 +9,9 @@ import re
 
 
 from tqdm import tqdm
-from utils.io import dump_json, load_json
+from utils.io import dump_json
 from utils.doc_ref import DocRef
-from utils.doc import add_preprocessed_body_text, get_body_text
-
-
-SPACE_CHARS = '\t\x0b\x0c\r\x1c\x1d\x1e\x1f \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000'
+from utils.doc import add_preprocessed_body_text, check_if_folder_is_sent, get_body_text, SPACE_CHARS
 
 
 def normalize_body_text_for_matching(body: str) -> str:
@@ -49,7 +46,6 @@ def get_matches_in_body_pair(text1: str,
         if match.size < min_match_size:
             continue
         match_str = text1[match.a:match.a+match.size]
-
         if match_str.startswith('\n\n') and match_str.endswith('\n\n'):
             matches.append(match_str.strip())
             continue
@@ -177,7 +173,7 @@ def clean_body_text(
     paths_d = {'sent': [], 'received': []}
 
     for path in doc_ref.get_paths():
-        if 'Sent Items' in path.__str__():
+        if check_if_folder_is_sent(path):
             paths_d['sent'].append(path)
         else:
             paths_d['received'].append(path)
