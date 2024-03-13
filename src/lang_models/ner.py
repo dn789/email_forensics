@@ -9,26 +9,32 @@ class NerCompanyTagger:
         self.tagger = pipeline(
             task='ner', model="nbroad/deberta-v3-base-company-names")
 
-    def __call__(self, text: str) -> set[str]:
-        sents = sent_tokenize(text)
+    def __call__(self, text: str, return_set: bool = True, do_sent_tokenize: bool = True) -> set[str] | list[str]:
+        if do_sent_tokenize:
+            text = sent_tokenize(text)
+        else:
+            text = [text]  # type: ignore
         orgs, current_org = set(), ''
-        for sent in sents:
-            if len(sent) > 2400:
+
+        for batch in text:
+            if len(batch) > 2400:
                 continue
-            output: list[dict] = self.tagger(sent)  # type: ignore
+            output: list[dict] = self.tagger(batch)  # type: ignore
             for d in output:
                 if d['entity'].startswith('B'):
                     if current_org:
                         orgs.add(current_org)
                         current_org = ''
-                    current_org += sent[d['start']:d['end']]
+                    current_org += batch[d['start']:d['end']]
                 else:
-                    current_org += sent[d['start']:d['end']]
+                    current_org += batch[d['start']:d['end']]
             if current_org:
                 orgs.add(current_org)
                 current_org = ''
 
-        orgs = set(org.strip().replace('\n', '') for org in orgs)
+        orgs = [org.strip().replace('\n', '') for org in orgs]
+        if return_set:
+            orgs = set(orgs)
         return orgs
 
 

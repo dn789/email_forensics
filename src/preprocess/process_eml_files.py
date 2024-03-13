@@ -10,6 +10,8 @@ def make_message_dict(path: Path, parser: parser.Parser) -> dict[str, str] | Non
         message_obj = parser.parse(path.open())
     except UnicodeDecodeError:
         return
+    if message_obj.__dict__.get('defects'):
+        return
     message_dict = dict(message_obj.items())
     body_text = message_obj.get_body(preferencelist=('plain'))  # type: ignore
     body_html = message_obj.get_body(preferencelist=('html'))  # type: ignore
@@ -29,11 +31,12 @@ def process_folder(folder: Path, output: Path) -> None:
     p = parser.Parser(policy=default)
     for path in folder.rglob('*'):
         # Neeed to parse other item types
-        if path.is_file() and path.suffix == '.eml':
+        if path.is_file():
             message_dict = make_message_dict(path, p)
-            if message_dict:
-                message_dict['messageClass'] = 'IPM.Note'
-                dump_json(message_dict, (output /
-                                         path.relative_to(folder).with_suffix('.json')))
+            if not message_dict:
+                continue
+            message_dict['messageClass'] = 'IPM.Note'
+            dump_json(message_dict, (output /
+                                     path.relative_to(folder).with_suffix('.json')))
         else:
             (output / path.relative_to(folder)).mkdir(parents=True, exist_ok=True)

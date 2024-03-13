@@ -7,6 +7,9 @@ import re
 from utils.io import load_json, dump_json
 
 
+SPACE_CHARS = '\t\x0b\x0c\r\x1c\x1d\x1e\x1f \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000'
+
+
 def get_contact(contactItem: dict) -> dict | None:
     """Gets 1st email and display name."""
     name = contactItem.get('email1DisplayName')
@@ -72,8 +75,7 @@ def find_email_addresses(text: str) -> set[str]:
 
 
 def find_urls(text: str) -> set[str]:
-    """Returns dict of domain, list of urls of domain. """
-    url_pattern = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))"
+    url_pattern = r"(?i)\b(?:https?://www\d{0,3}[.]|www\d{0,3}[.])\S+"
     urls = re.findall(url_pattern, text)
     return set([''.join(url).lower() for url in urls])
 
@@ -86,3 +88,7 @@ def find_phone_nums(text: str, context: bool = False) -> list[str]:
     else:
         phone_num_pattern = r'[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}'
         return re.findall(phone_num_pattern, text)
+
+
+def check_if_folder_is_sent(path: Path) -> list[str]:
+    return re.findall(r'(?:^|[^a-z])sent(?:$|[^a-z])', path.__str__(), flags=re.IGNORECASE)

@@ -8,7 +8,8 @@ import tldextract
 from tqdm import tqdm
 
 from utils.io import dump_json, load_json
-from utils.doc import (get_sender,
+from utils.doc import (check_if_folder_is_sent,
+                       get_sender,
                        get_recipients,
                        get_contact,
                        find_email_addresses,
@@ -62,7 +63,7 @@ def process_doc(path: Path, user: UserInfo, org_info: OrgInfo) -> None:
                 if name:
                     org_info.email_addrs_w_names[addr].add(name)
         # Checks if this is a sent item. Might need more robust method.
-        if 'Sent Items' in path.__str__():
+        if check_if_folder_is_sent(path):
             user.communicators.update([r['addr'] for r in recipients])
             # Get company/organization domains from sender in sent items.
             if (sender_addr := sender['addr']) and '@' in sender_addr:

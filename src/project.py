@@ -58,7 +58,7 @@ class Project():
         else:
             checklist = {}
 
-        if not checklist.get('preprocess'):
+        if not checklist.get('preprocess') and not kwargs.get('already_preprocessed'):
             self.preprocess()
             checklist['preprocess'] = True
             dump_json(checklist, self.paths.checklist)
@@ -129,6 +129,7 @@ class Project():
                                   occurence_threshold_freq_orgs=occurence_threshold_freq_orgs)
 
     def get_vendors(self, **kwargs):
+        print('\nGetting vendor names...')
         kwargs['filter_query'] = kwargs.get(
             'filter_query', ['invoice', 'payment', 'vendor'])
         kwargs['query_label'] = kwargs.get(

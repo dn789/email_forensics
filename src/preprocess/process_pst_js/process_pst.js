@@ -32,7 +32,6 @@ const removeKeys = [
 function processPST(input, output) {
   const pstFile = new PSTFile(input);
   let pstName = pstFile.getMessageStore().displayName;
-  console.log("Extracting files from PST file \"" + pstName + "\"...");
   let currOutput = path.join(output, pstName);
   mkdirSync(currOutput, { recursive: true });
   processFolder(pstFile.getRootFolder(), currOutput);

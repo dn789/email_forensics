@@ -19,8 +19,10 @@ def preprocess(pst_input: Path, output: Path):
                 folders_to_process.append(path)
 
     for pst in psts_to_process:
+        print(f'\nExtracting contents of {pst.name}...')
         subprocess.run(
             ['node', 'preprocess/process_pst_js/process_pst.js', pst, output])
 
     for folder in folders_to_process:
+        print(f'\nPreprocessing {folder.name}...')
         process_folder(folder, output)
