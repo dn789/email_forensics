@@ -3,10 +3,11 @@ DocRef class that keeps track of file paths of PST items, named entities,
 senders/recipients, etc.
 
 """
+from collections import Counter
 from pathlib import Path
 import pandas as pd
 
-from utils.doc import get_body_text, get_sender, get_recipients
+from utils.doc import get_body_text, get_sender, get_recipients, check_if_folder_is_sent
 from utils.io import load_json
 
 
@@ -14,6 +15,7 @@ class DocRef:
     def __init__(self, docs_folder: Path, ref_path: Path) -> None:
         self.docs_folder = docs_folder
         self.path = ref_path
+        self.source_dict = load_json(docs_folder / 'sources.json')
         if ref_path.is_file():
             self.df = pd.read_pickle(ref_path)
         else:
@@ -23,6 +25,7 @@ class DocRef:
     def make_df(self):
         d = {
             'path': [],
+            'user_folder': [],
             'embed_index': [],
             'duplicate': [],
             'empty': [],
@@ -37,34 +40,41 @@ class DocRef:
 
         i = 0
         body_texts = set()
-        for path in self.docs_folder.rglob('*.json'):
-            if not path.is_file():
-                continue
-            d['path'].append(path)
+        for user_folder in self.docs_folder.iterdir():
+            for path in user_folder.rglob('*.json'):
+                if not path.is_file():
+                    continue
+                d['path'].append(path)
+                d['user_folder'].append(user_folder)
+                doc_d = load_json(path)
+                body = get_body_text(doc_d, preprocessed=False)
+                d['sender'].append(get_sender(doc_d))
+                d['recipients'].append(get_recipients(doc_d))
 
-            doc_d = load_json(path)
-            body = get_body_text(doc_d, preprocessed=False)
-            d['sender'].append(get_sender(doc_d))
-            d['recipients'].append(get_recipients(doc_d))
+                empty = not body
+                duplicate = body in body_texts
+                embed_index = -1
 
-            empty = not body
-            duplicate = body in body_texts
-            embed_index = -1
+                d['empty'].append(empty)
+                d['duplicate'].append(duplicate)
 
-            d['empty'].append(empty)
-            d['duplicate'].append(duplicate)
-
-            if not empty and not duplicate:
-                embed_index = i
-                i += 1
-            d['embed_index'].append(embed_index)
-            if not duplicate:
-                body_texts.add(body)
+                if not empty and not duplicate:
+                    embed_index = i
+                    i += 1
+                d['embed_index'].append(embed_index)
+                if not duplicate:
+                    body_texts.add(body)
 
         df = pd.DataFrame(d)
         df.set_index('path', inplace=True)
         df['embed_index'] = df['embed_index'].astype(int)
         self.df = df
+
+    def get_users(self) -> set[str]:
+        return set(self.df['user'].to_list())
+
+    def get_user_folders(self) -> set[Path]:
+        return set(self.df['user_folder'].to_list())
 
     def get_paths(self, encoded_only: bool = True) -> list[Path]:
         if encoded_only:
@@ -78,12 +88,18 @@ class DocRef:
                                  >= query_threshold].index.to_list()
         return paths_by_query
 
+    def get_paths_by_user_folder(self, user_folder: Path, sent_only: bool = False) -> list[Path]:
+        paths = self.df[self.df['user_folder'] == user_folder].index.to_list()
+        if sent_only:
+            paths = [path for path in paths if check_if_folder_is_sent(path)]
+        return paths
+
     def get_paths_to_process(self, query_label: str, query_threshold: float) -> list[Path]:
         paths_to_process = self.df[(self.df[query_label] >= query_threshold) & (
             -self.df['checked_ORG'] | -self.df['checked_other_NER'])].index.to_list()
         return paths_to_process
 
-    def add_ents(self, path: Path, ents: set[str] | dict[str, set[str]], orgs_only: bool = False) -> None:
+    def add_ents(self, path: Path, ents: list[str] | set[str] | dict[str, set[str]], orgs_only: bool = False) -> None:
         if isinstance(ents, dict):
             for tag, ents_ in ents.items():
                 self.df.at[path, tag] = ents_

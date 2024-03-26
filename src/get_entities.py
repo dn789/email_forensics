@@ -50,7 +50,7 @@ def add_entities_to_doc_ref(paths: list[Path],
         text = get_body_text(path, incl_subj=True)
         if not doc_ref.is_doc_tagged(path, 'ORG'):
             orgs = org_tagger(text)
-            doc_ref.add_ents(path,  orgs, orgs_only=True)
+            doc_ref.add_ents(path, orgs, orgs_only=True)
         if general_tagger and not doc_ref.is_doc_tagged(path):
             entities_by_tag = general_tagger(text)
             doc_ref.add_ents(path,  entities_by_tag)

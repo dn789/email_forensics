@@ -10,6 +10,15 @@ from utils.io import load_json, dump_json
 SPACE_CHARS = '\t\x0b\x0c\r\x1c\x1d\x1e\x1f \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000'
 
 
+def parse_name(name: str) -> dict[str, str] | None:
+    if len(name_split := name.split(',')) > 1:
+        name = ' '.join((name_split[1], name_split[0]))
+    if len(name_split := name.split(maxsplit=1)) == 2:
+        first_name, last_name = name_split
+        parsed_name = {'first_name': first_name, 'last_name': last_name}
+        return parsed_name
+
+
 def get_contact(contactItem: dict) -> dict | None:
     """Gets 1st email and display name."""
     name = contactItem.get('email1DisplayName')
@@ -33,21 +42,23 @@ def get_sender(email: dict[str, Any]) -> dict[str, str | None]:
         if not addr:
             if match := find_email_addresses(name):
                 match, = match
-                addr = match[0].lower()
-    return {'name': name, 'addr': addr}
+                addr = match[0].lower()  # type: ignore
+    return {'name': name, 'addr': addr, 'type': 'sender'}
 
 
 def get_recipients(email: dict[str, Any]) -> list[dict[str, str | None]]:
     recipients = []
     if r_list := email.get('recipients'):
         for r in r_list:
-            recipients.append({'name': None, 'addr': r['smtpAddress'].lower()})
-        if len(recipients) == 1:
-            recipients[0]['name'] = email.get('displayTo')
-    elif r_str := email.get('To'):
-        for raw_addr in r_str.split(','):
-            name, addr = parseaddr(raw_addr)
-            recipients.append({'name': name, 'addr': addr.lower()})
+            r.setdefault('type', 'recipient')
+        return r_list
+    else:
+        for type_ in ('To', 'CC', 'BCC'):
+            r_str = email.get(type_, '')
+            for raw_addr in r_str.split(','):
+                name, addr = parseaddr(raw_addr)
+                recipients.append(
+                    {'name': name, 'addr': addr.lower(), 'type': type_.lower()})
     return recipients
 
 
@@ -68,10 +79,17 @@ def add_preprocessed_body_text(doc_path: Path, body_text: str) -> None:
     dump_json(email_d, doc_path)
 
 
-def find_email_addresses(text: str) -> set[str]:
-    addresses = re.findall(
-        r'[a-zA-z0-9\.\_\-]+@[a-zA-z0-9\.\_\-]+\.[a-zA-z0-9]+', text)
-    return set([a.lower() for a in addresses if a])
+def find_email_addresses(text: str, indices_only: bool = False) -> set[str] | set[int]:
+    email_pattern = r'[a-zA-z0-9\.\_\-]+@[a-zA-z0-9\.\_\-]+\.[a-zA-z0-9]+'
+    if indices_only:
+        indices = set()
+        email_addr_matches = re.finditer(email_pattern, text)
+        for match in email_addr_matches:
+            indices.update(range(*match.span()))
+        return indices
+    else:
+        email_addrs = re.findall(email_pattern, text)
+        return set([a.lower() for a in email_addrs if a])
 
 
 def find_urls(text: str) -> set[str]:
@@ -80,7 +98,9 @@ def find_urls(text: str) -> set[str]:
     return set([''.join(url).lower() for url in urls])
 
 
-def find_phone_nums(text: str, context: bool = False) -> list[str]:
+def find_phone_nums(text: str, context: bool = False, ignore_whitespace: bool = False) -> list[str]:
+    if ignore_whitespace:
+        text = text.replace(' ', '')
     if context:
         phone_num_pattern = r'([\s\S]{,50})([\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6})([\s\S]{,50})'
         return re.findall(phone_num_pattern, text)

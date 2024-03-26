@@ -25,8 +25,6 @@ def main(config_path: str | Path):
         checklist['preprocess'] = True
         dump_json(checklist, checklist_path)
 
-    semantic_model = SemanticModel()
-
     pst_analyzer = Project(
         org_docs_folder, output_folder, **config['pst_analyzer_args'])
 

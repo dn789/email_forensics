@@ -3,7 +3,7 @@
 from collections import Counter
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 import random
 import re
 
@@ -34,7 +34,8 @@ def normalize_body_text_after_dedupe(body: str) -> str:
 def get_matches_in_body_pair(text1: str,
                              text2: str,
                              min_match_size: int = 100,
-                             sequence_matcher_autojunk: bool = True) -> list[str]:
+                             sequence_matcher_autojunk: bool = True,
+                             match_criteria: Callable | None = None) -> list[str]:
     """Pass text to normalize_body_text_for_matching first."""
 
     matches = []
@@ -46,6 +47,10 @@ def get_matches_in_body_pair(text1: str,
         if match.size < min_match_size:
             continue
         match_str = text1[match.a:match.a+match.size]
+
+        if match_criteria and not match_criteria(match_str):
+            continue
+
         if match_str.startswith('\n\n') and match_str.endswith('\n\n'):
             matches.append(match_str.strip())
             continue
@@ -62,13 +67,32 @@ def get_matches_in_body_pair(text1: str,
             except ValueError:
                 pass
 
+        if match_criteria and not match_criteria(match_str):
+            continue
+
         if len(match_str) >= min_match_size:
             matches.append(match_str.strip())
 
     return matches
 
 
-def get_matches_in_bodies(paths: list[Path], min_match_size=100, sequence_matcher_autojunk: bool = True) -> list[tuple[str, list]]:
+def get_matches_in_bodies(paths: list[Path],
+                          min_match_size=100,
+                          sequence_matcher_autojunk: bool = True,
+                          match_criteria: Callable | None = None
+                          ) -> list[tuple[str, list]]:
+    """_summary_
+
+    Args:
+        paths (list[Path]): _description_
+        min_match_size (int, optional): _description_. Defaults to 100.
+        sequence_matcher_autojunk (bool, optional): _description_. Defaults to True.
+        match_criteria (Callable | None, optional): Should be a function that 
+            returns True if criteria are met. Defaults to None.
+
+    Returns:
+        list[tuple[str, list]]: _description_
+    """
     completed_doc_pairs = set()
     matches_with_paths_d = {}
 
@@ -88,11 +112,11 @@ def get_matches_in_bodies(paths: list[Path], min_match_size=100, sequence_matche
             matches = get_matches_in_body_pair(
                 text1, text2,
                 min_match_size=min_match_size,
-                sequence_matcher_autojunk=sequence_matcher_autojunk)
+                sequence_matcher_autojunk=sequence_matcher_autojunk,
+                match_criteria=match_criteria)
             for match in matches:
                 matches_with_paths_d.setdefault(match, set())
                 matches_with_paths_d[match].update([path1, path2])
-
     matched_with_paths_ranked = Counter(matches_with_paths_d).most_common()
     return matched_with_paths_ranked  # type: ignore
 
@@ -100,7 +124,8 @@ def get_matches_in_bodies(paths: list[Path], min_match_size=100, sequence_matche
 def get_freq_deduped_matches(matches_and_paths: list[tuple[Any, Any]],
                              match_ratio_threshold: float = .9,
                              doc_count_threshold: int = 10,
-                             sequence_matcher_autojunk: bool = True) -> list[str]:
+                             sequence_matcher_autojunk: bool = True,
+                             fallback_to_most_frequent: bool = False) -> list[str]:
     deduped_matches = {}
     completed_pairs = set()
     for i1, (match1, path_set1) in tqdm(list(enumerate(matches_and_paths))):
@@ -123,9 +148,11 @@ def get_freq_deduped_matches(matches_and_paths: list[tuple[Any, Any]],
         deduped_matches[deduped_match] = deduped_match_paths
 
     freq_deduped_matches = []
-    for match, paths in Counter(deduped_matches).most_common():
+    for match, paths in (deduped_matches_ranked := Counter(deduped_matches).most_common()):
         if len(paths) >= doc_count_threshold:  # type: ignore
             freq_deduped_matches.append(match)
+    if fallback_to_most_frequent and not freq_deduped_matches and deduped_matches_ranked:
+        freq_deduped_matches.append(deduped_matches_ranked[0][0])
     return freq_deduped_matches
 
 

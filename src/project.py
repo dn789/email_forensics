@@ -9,7 +9,7 @@ from pathlib import Path
 
 from clean_body_text import clean_body_text
 from get_entities import get_entities_by_doc_query
-from get_contact_info import main as get_contact_info, get_signatures_and_save
+from get_contact_info import main as get_contact_info, save_signatures_from_all_docs
 from lang_models.semantic import SemanticModel
 from preprocess.preprocess import preprocess
 from utils.io import load_json, dump_json
@@ -97,16 +97,16 @@ class Project():
 
     def get_contact_info(self) -> None:
         print('\nGetting contact info...')
-        get_contact_info(self.paths.docs, self.paths.contact_info)
+        get_contact_info(self.doc_ref, self.paths.contact_info)
         freq_deduped_matches = load_json(
             self.paths.clean_body_text / 'freq_deduped_matches.json')
-        get_signatures_and_save(freq_deduped_matches,  # type: ignore
-                                self.paths.contact_info / 'signatures.json')
+        save_signatures_from_all_docs(freq_deduped_matches,  # type: ignore
+                                      self.paths.contact_info / 'signatures.json')
 
-    def query_docs(self, query: str | list, top_n: int = 10, query_label: str = 'query') -> None:
+    def query_docs(self, query: str | list, top_n: int = 10, query_label: str = 'query', show_score: bool = True) -> None:
         query_label = query_label.replace(' ', '_')
         self.semantic_model.query_docs(
-            query, query_label=query_label, show_top_n=top_n)
+            query, query_label=query_label, show_top_n=top_n, show_score=show_score)
 
     def get_entities_from_relevant_docs(self,
                                         filter_query: str | list,
