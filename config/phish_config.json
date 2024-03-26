@@ -1,0 +1,18 @@
+{
+    "api_key": "db25dfa8d19bcb10450d0e1e4f1bef9aee7fd5c38013d674ca693469b2870bd1",
+    "password": "bDHa8onlLAKd7o1;",
+    "sender_name": null,
+    "sender_email_addr": null,
+    "SMTP": {
+        "name": "test sending profile",
+        "host": "localhost:25"
+    },
+    "Page": {
+        "name": "test page",
+        "text_path": "../data/phishing/test_page.html"
+    },
+    "Template": {
+        "name": "test template",
+        "text_path": "../data/phishing/test_template.txt"
+    }
+}

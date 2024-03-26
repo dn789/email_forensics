@@ -1,0 +1,9 @@
+{
+    "source": "../../psts/hd wood/",
+    "project_folder": "../results/hd_wood/",
+    "already_preprocessed": false,
+    "get_vendors": {},
+    "preprocess": {},
+    "clean_body_text": {},
+    "semantic_model_name": "msmarco-distilbert-base-v4"
+}
