@@ -1,0 +1,18 @@
+{
+    "api_key": "api-key",
+    "password": "password",
+    "sender_name": null,
+    "sender_email_addr": null,
+    "SMTP": {
+        "name": "test sending profile",
+        "host": "localhost:25"
+    },
+    "Page": {
+        "name": "test page",
+        "text_path": "../data/phishing/test_page.html"
+    },
+    "Template": {
+        "name": "test template",
+        "text_path": "../data/phishing/test_template.txt"
+    }
+}

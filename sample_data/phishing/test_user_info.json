@@ -1,0 +1,45 @@
+{
+    "name": "John Doe",
+    "all_names": [
+        "John Doe"
+    ],
+    "communicators": {
+        "Jimmypage@example.com": {
+            "names": [
+                "Jimmy Page"
+            ],
+            "user_greetings": [],
+            "com_types": {
+                "sender": 3041
+            },
+            "count": 3041
+        },
+        "sally.jones@example123.com": {
+            "names": [
+                "Sally Jones"
+            ],
+            "user_greetings": [],
+            "com_types": {
+                "sender": 709
+            },
+            "count": 709
+        },
+        "maggiebrown@blahblahblah.com": {
+            "names": [
+                "Brown, Maggie"
+            ],
+            "user_greetings": [],
+            "com_types": {
+                "sender": 192
+            },
+            "count": 192
+        }
+    },
+    "email_addrs": [
+        "johndoe@example.com"
+    ],
+    "job_titles": [
+        "regional manager",
+        "environmental"
+    ]
+}
