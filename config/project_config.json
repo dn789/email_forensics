@@ -1,6 +1,6 @@
 {
-    "source": "../../psts/hd wood/",
-    "project_folder": "../results/hd_wood/",
+    "source": "path-to-source-file-or-folder",
+    "project_folder": "path-to-project-folder",
     "already_preprocessed": false,
     "get_vendors": {},
     "preprocess": {},
