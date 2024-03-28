@@ -244,7 +244,7 @@ def clean_body_text(
 
     paths = paths_d['sent'] + paths_d['received']
 
-    print('Removing frequent text blocks from email bodies...')
+    print('Removing redundant text blocks from email bodies...')
 
     remove_freq_matches_from_bodies(freq_matches,
                                     paths,
