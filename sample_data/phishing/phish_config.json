@@ -1,5 +1,5 @@
 {
-    "api_key": "api-key",
+    "api_key": "a372a378e6d0a5f8d8bfef97b0884f2e39ce970ad093d27c3ea5d6ee8f154d78",
     "password": "password",
     "sender_name": null,
     "sender_email_addr": null,
@@ -9,10 +9,10 @@
     },
     "Page": {
         "name": "test page",
-        "text_path": "../data/phishing/test_page.html"
+        "text_path": "../sample_data/phishing/test_page.html"
     },
     "Template": {
         "name": "test template",
-        "text_path": "../data/phishing/test_template.txt"
+        "text_path": "../sample_data/phishing/test_page.html"
     }
 }
