@@ -29,6 +29,26 @@ def create_group_from_user(user: dict[str, Any], group_name: str) -> Group:
 
 
 def create_campaign(user_file: Path, config: dict[str, Any], launch: bool = False) -> None:
+    """Creates Gophish campaign from user_file
+
+    Args:
+        user_file (Path): user JSON file produced by a Project in
+            [project-folder]/output/contact_info/users.
+        config (dict[str, Any]): {
+            "api_key" (str): Gophish API key,
+            "sender_name" (str | None): Automatically generated; specify to overwrite. 
+            "sender_email_addr" (str | None): Automatically generated; specify to overwrite.
+            "SMTP" (dict): Args for SMTP model; need to specify "name" and "host".
+            "Page" (dict): Args for Page model; need to specify "name" and "text_path".
+            "Template" (dict): Args for Template model; need to specify "name" and "text_path"
+        }
+        launch (bool, optional): Whether to launch campaign. If False, just
+            posts the individual models (Group, Page, SMTP, etc.). Defaults
+            to False.
+
+    Raises:
+        ValueError: Can't find an email address for the sender.
+    """
 
     user_d = load_json(user_file)
 

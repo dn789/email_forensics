@@ -1,4 +1,4 @@
-"""Preprocesses PST docs' body text, esp. by removing redunant text blocks."""
+"""Normailizes spacing and removes redundant text blocks (footers, etc.) from a set of emails."""
 
 from collections import Counter
 from difflib import SequenceMatcher
@@ -186,16 +186,24 @@ def clean_body_text(
         match_prevalence_threshold: float = .1,
         sample_n_docs: int = 50,
         sequence_matcher_autojunk: bool = True) -> None:
-    """_summary_
+    """
+    Normailizes spacing and removes redundant text blocks (footers, etc.) 
+    from a set of emails.
 
     Args:
-        doc_ref (DocRef): _description_
-        util_folder (Path): _description_
-        min_match_size (int, optional): _description_. Defaults to 100.
-        match_ratio_threshold (float, optional): _description_. Defaults to .9.
-        match_prevalence_threshold (float, optional): _description_. Defaults to .1.
-        sample_n_docs (int, optional): _description_. Defaults to 50.
-        sequence_matcher_autojunk (bool, optional): _description_. Defaults to True.
+        doc_ref (DocRef): Document reference.
+        util_folder (Path): Path for utility files. 
+        min_match_size (int, optional): Min. char count for redundant text 
+            blocks. Defaults to 100.
+        match_ratio_threshold (float, optional): Min. similarity ratio for 
+            redundant text blocks. Defaults to .9.
+        match_prevalence_threshold (float, optional): Text blocks that occur 
+            in at least this proportion of docs will be considered redunant. 
+            Defaults to .1.
+        sample_n_docs (int, optional): N docs to sample for redundant text 
+            blocks. Defaults to 50.
+        sequence_matcher_autojunk (bool, optional): Faster if True. Defaults 
+            to True.
     """
     paths_d = {'sent': [], 'received': []}
 

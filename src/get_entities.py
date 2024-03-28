@@ -5,9 +5,7 @@ from difflib import SequenceMatcher
 from itertools import combinations
 from pathlib import Path
 import random
-import csv
 import pandas as pd
-import seaborn as sns
 
 from tqdm import tqdm
 
@@ -15,7 +13,6 @@ from lang_models.ner import NerCompanyTagger, FlairTagger
 from utils.io import dump_json,  load_json
 from utils.doc_ref import DocRef
 from utils.doc import get_body_text
-from utils.visualize import make_and_save_html_table
 
 
 def group_strs_by_similarity(entities_with_paths: dict[str, set[str]]) -> dict[str, dict[str, set[str] | int]]:
@@ -136,9 +133,31 @@ def get_entities_by_doc_query(doc_ref: DocRef,
                               query_label: str = 'query',
                               query_threshold: float = .3,
                               orgs_only: bool = True,
-                              n_docs_sample_freq_orgs: int = 500,
+                              n_docs_sample_freq_orgs: int = 250,
                               occurence_threshold_freq_orgs: float = .05
                               ) -> None:
+    """Gets entities from docs relevant to query.
+
+    Args:
+        doc_ref (DocRef): Document reference 
+        util_folder (Path): Path for utility files.
+        output_folder (Path): Output path.
+        query_label (str, optional): Used to name output file. Defaults to 
+            'query'.
+        query_threshold (float, optional): Minumum similarity score for 
+            relevant documents. Defaults to .3.
+        orgs_only (bool, optional): Only get organization entities. Defaults to 
+            True.
+        n_docs_sample_freq_orgs (int, optional): Number of random docs to get
+            org entities from. Used for filtering out irrelevant entities from 
+            results. Defaults to 250.
+        occurence_threshold_freq_orgs (float, optional): Entities occuring in 
+            at least this proportion of random docs will be filtered out . 
+            Defaults to .05.
+
+    Raises:
+        NotImplementedError: Only implemented for org entities.
+    """
     if not orgs_only:
         raise NotImplementedError
 

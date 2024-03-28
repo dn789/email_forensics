@@ -1,6 +1,5 @@
 """
-Analyzes a company or organization's emails and other PST contents and 
-saves results.
+Analyzes a company or organization's emails and other PST contents.
 
 """
 
@@ -16,8 +15,9 @@ from utils.io import load_json, dump_json
 from utils.doc_ref import DocRef
 
 
-class Project():
+class Project:
     """
+    Analyzes a company or organization's emails and other PST contents.
     """
 
     def __init__(self,
@@ -26,6 +26,23 @@ class Project():
                  **kwargs
                  ) -> None:
         """
+        Preprocessing, cleaning text and getting vendors is done automatically 
+        when a project is initalized in a folder for the first time.
+
+        Args:
+            source (Path): Path of folder containing PSTs or email files, or 
+                path of a single PST file. Each PST file or subfolder should
+                represent an individual's communications. 
+            project_folder (Path): Path for output files.
+            kwargs: {
+                "already_preprocessed" (bool): Skips preprocessing step. Only
+                    need this if you're initializing a project in a new folder
+                    with already preprocessed docs in docs subfolder. 
+                "semantic_model_name" (str): Model name from 
+                    https://www.sbert.net/docs/pretrained_models.html.
+                "clean_body_text" (dict): {clean_body_text kwargs}.
+                "get_vendors" (dict): {get_vendors kwargs}.
+            }
         """
         # Set up paths
         self.source = source
@@ -91,7 +108,27 @@ class Project():
         preprocess(self.source, self.paths.docs)
 
     def clean_body_text(self, **kwargs) -> None:
+        """
+        Normailizes spacing and removes redundant text blocks (footers, etc.) 
+        from a set of emails.
+
+        Kwargs:
+            doc_ref (DocRef): Document reference.
+            util_folder (Path): Path for utility files. 
+            min_match_size (int, optional): Min. char count for redundant text 
+                blocks. Defaults to 100.
+            match_ratio_threshold (float, optional): Min. similarity ratio for 
+                redundant text blocks. Defaults to .9.
+            match_prevalence_threshold (float, optional): Text blocks that occur 
+                in at least this proportion of docs will be considered redunant. 
+                Defaults to .1.
+            sample_n_docs (int, optional): N docs to sample for redundant text 
+                blocks. Defaults to 50.
+            sequence_matcher_autojunk (bool, optional): Faster if True. Defaults 
+                to True.
+        """
         print('\nCleaning body text...')
+
         clean_body_text(
             self.doc_ref, self.paths.clean_body_text, **kwargs)
 
@@ -113,9 +150,27 @@ class Project():
                                         query_label: str = 'query',
                                         query_threshold: float = .3,
                                         orgs_only: bool = True,
-                                        n_docs_sample_freq_orgs=500,
+                                        n_docs_sample_freq_orgs=250,
                                         occurence_threshold_freq_orgs=.05
                                         ) -> None:
+        """Gets entities from docs relevant to query.
+
+        Args:
+            filter_query (str | list): Query string or list of query strings. 
+                Highest-scoring query is used to check relevance. 
+        query_label (str, optional): Used to name output file. Defaults to 
+            'query'.
+        query_threshold (float, optional): Minumum similarity score for 
+            relevant documents. Defaults to .3.
+        orgs_only (bool, optional): Only get organization entities. Defaults to 
+            True.
+        n_docs_sample_freq_orgs (int, optional): Number of random docs to get
+            org entities from. Used for filtering out irrelevant entities from 
+            results. Defaults to 250.
+        occurence_threshold_freq_orgs (float, optional): Entities occuring in 
+            at least this proportion of random docs will be filtered out . 
+            Defaults to .05.
+        """
         self.semantic_model.query_docs(
             filter_query, query_label=query_label, save=True)
 
@@ -129,6 +184,27 @@ class Project():
                                   occurence_threshold_freq_orgs=occurence_threshold_freq_orgs)
 
     def get_vendors(self, **kwargs):
+        """
+        Gets vendor names by getting entities from docs relevant to invoices,
+        payment, etc.
+
+        Kwargs:
+            filter_query (str | list): Query string or list of query strings. 
+                Highest-scoring query is used to check relevance. Defaults
+                to ['invoice', 'payment', 'vendor']
+            query_label (str, optional): Used to name output file. Defaults to 
+                'vendors_default'.
+            query_threshold (float, optional): Minumum similarity score for 
+                relevant documents. Defaults to .3.
+            orgs_only (bool, optional): Only get organization entities. Defaults to 
+                True.
+            n_docs_sample_freq_orgs (int, optional): Number of random docs to get
+                org entities from. Used for filtering out irrelevant entities from 
+                results. Defaults to 250.
+            occurence_threshold_freq_orgs (float, optional): Entities occuring in 
+                at least this proportion of random docs will be filtered out . 
+                Defaults to .05.
+        """
         print('\nGetting vendor names...')
         kwargs['filter_query'] = kwargs.get(
             'filter_query', ['invoice', 'payment', 'vendor'])

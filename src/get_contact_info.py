@@ -158,7 +158,7 @@ def determine_user(folder: Path, from_pst: bool = True) -> dict[str, Counter]:
 
 
 def process_user(user_folder: Path, org_info: OrgInfo, doc_ref: DocRef) -> None:
-    from_pst = doc_ref.source_dict[user_folder.__str__()] == 'pst'
+    from_pst = doc_ref.source_dict[user_folder.name.__str__()] == 'pst'
     user_d = determine_user(user_folder, from_pst=from_pst)
     names = set()
     for i, (name, count) in enumerate(user_d['names'].most_common()):
@@ -340,5 +340,11 @@ def save_contact_info(org_info: OrgInfo, output: Path) -> None:
 
 
 def main(doc_ref: DocRef, output: Path) -> None:
+    """Gets emails, urls, phone numbers, contacts, etc. from PST docs.mmary_
+
+    Args:
+        doc_ref (DocRef): Document reference.
+        output (Path): Path for output fulder.
+    """
     org_info = get_contact_info(doc_ref)
     save_contact_info(org_info, output)
