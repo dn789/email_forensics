@@ -26,7 +26,7 @@ def preprocess(pst_input: Path, output: Path):
     for pst in psts_to_process:
         print(f'\nExtracting contents of {pst.name}...')
         subprocess.run(
-            ['node', 'preprocess/process_pst_js/process_pst.js', pst, output])
+            ['node', 'preprocess/process_pst_js/process_pst.js', pst, output / pst.stem])
         source_d[pst.stem] = 'pst'
 
     for folder in folders_to_process:

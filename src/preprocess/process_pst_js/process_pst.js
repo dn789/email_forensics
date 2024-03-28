@@ -15,10 +15,8 @@ Command line:
 import path from "path";
 import { convert } from "html-to-text";
 import { PSTFile } from "pst-extractor";
-import { mkdirSync, readdirSync, statSync, writeFileSync } from "fs";
-// import { OutlookProperties } from "./node_modules/pst-extractor/dist/OutlookProperties"
+import { mkdirSync, writeFileSync } from "fs";
 
-let TEST;
 
 // Remove keys from item JSON
 const removeKeys = [
@@ -33,11 +31,14 @@ const removeKeys = [
 ];
 
 function processPST(input, output) {
-    const pstFile = new PSTFile(input);
-    let pstName = pstFile.getMessageStore().displayName;
-    let currOutput = path.join(output, pstName);
-    mkdirSync(currOutput, { recursive: true });
-    processFolder(pstFile.getRootFolder(), currOutput);
+    let pstFile;
+    try {
+        pstFile = new PSTFile(input);
+    } catch (err) {
+        console.log('Error opening: ' + input);
+    }
+    mkdirSync(output, { recursive: true });
+    processFolder(pstFile.getRootFolder(), output);
 }
 
 function processFolder(folder, output) {
@@ -134,8 +135,5 @@ let input = process.argv[2];
 let output = process.argv[3];
 
 
-try {
-    processPST(input, output);
-} catch (err) {
-    console.log("Error opening PST");
-}
+processPST(input, output);
+
