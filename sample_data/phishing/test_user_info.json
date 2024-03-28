@@ -4,7 +4,7 @@
         "John Doe"
     ],
     "communicators": {
-        "Jimmypage@example.com": {
+        "Jimmypage@example123.com": {
             "names": [
                 "Jimmy Page"
             ],
@@ -24,7 +24,7 @@
             },
             "count": 709
         },
-        "maggiebrown@blahblahblah.com": {
+        "maggiebrown@example123.com": {
             "names": [
                 "Brown, Maggie"
             ],
@@ -39,7 +39,6 @@
         "johndoe@example.com"
     ],
     "job_titles": [
-        "regional manager",
-        "environmental"
+        "regional manager"
     ]
 }
