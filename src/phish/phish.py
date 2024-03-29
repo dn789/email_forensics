@@ -28,7 +28,7 @@ def create_group_from_user(user: dict[str, Any], group_name: str) -> Group:
     return group
 
 
-def create_campaign(user_file: Path, config: dict[str, Any], launch: bool = False) -> None:
+def create_campaign(user_file: Path, config: dict[str, Any], launch: bool = False, add_signature_to_template: bool = True) -> None:
     """Creates Gophish campaign from user_file
 
     Args:
@@ -45,6 +45,8 @@ def create_campaign(user_file: Path, config: dict[str, Any], launch: bool = Fals
         launch (bool, optional): Whether to launch campaign. If False, just
             posts the individual models (Group, Page, SMTP, etc.). Defaults
             to False.
+        add_signature_to_template (bool, optional): Whether to add signature
+            from user_file to end of phishing template. Defaults to True.
 
     Raises:
         ValueError: Can't find an email address for the sender.
@@ -74,15 +76,19 @@ def create_campaign(user_file: Path, config: dict[str, Any], launch: bool = Fals
 
     groups = []
     group = create_group_from_user(
-        user_d, group_name=f'{user_file.stem}_group')
+        user_d, group_name=f'{user_file.stem} Group')
     groups.append(group)
 
     page_html = open(config['Page']['text_path']).read()
-    config['Page']['text'] = page_html
+    config['Page']['html'] = page_html
     config['Page'].pop('text_path')
     page = Page(**config['Page'])
 
     template_text = open(config['Template']['text_path']).read()
+    if add_signature_to_template:
+        if sigs := user_d['signatures']:
+            signature = sigs[0]
+            template_text += f'\n{signature}'
     config['Template']['text'] = template_text
     config['Template'].pop('text_path')
     template = Template(**config['Template'])
@@ -91,7 +97,7 @@ def create_campaign(user_file: Path, config: dict[str, Any], launch: bool = Fals
     api = Gophish(api_key, verify=False)
 
     if launch:
-        campaign = Campaign(groups=groups, name='test',
+        campaign = Campaign(groups=groups, name='Test Campaign',
                             template=template, page=page, smtp=smtp)
         api.campaigns.post(campaign)
     else:
