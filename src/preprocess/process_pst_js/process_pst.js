@@ -104,11 +104,15 @@ function saveItem(item, output, i) {
     removeKeys.forEach((k) => delete itemObj[k]);
 
     try {
-        if (item.bodyRTF) {
+        if (item.body) {
+            itemObj.bodyText = item.body;
+        }
+        else if (item.bodyRTF) {
             itemObj.bodyText = item.bodyRTF;
-        } else if (item.bodyHTML) {
+        }
+        if (item.bodyHTML) {
             itemObj.bodyHTML = item.bodyHTML;
-            if (!item.bodyRTF) {
+            if (!itemObj.bodyText) {
                 itemObj.bodyText = htmlToText(item.bodyHTML);
             }
         }
