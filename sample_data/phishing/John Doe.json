@@ -40,5 +40,8 @@
     ],
     "job_titles": [
         "regional manager"
+    ],
+    "signatures": [
+        "John Doe\nRegional Manger\nABC Inc.\njohndoe@example.com\n(555) 555-5555"
     ]
 }

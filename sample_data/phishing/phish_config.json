@@ -1,18 +1,17 @@
 {
-    "api_key": "api_key",
-    "password": "password",
+    "api_key": "06ecd75dc38d766755c85a865384279064e72d00cc7f77997b610903054089cd",
     "sender_name": null,
     "sender_email_addr": null,
     "SMTP": {
-        "name": "test sending profile",
+        "name": "Test Sending Profile",
         "host": "localhost:25"
     },
     "Page": {
-        "name": "test page",
-        "text_path": "../sample_data/phishing/test_page.html"
+        "name": "Test Landing Page",
+        "text_path": "../sample_data/phishing/landing_page.html"
     },
     "Template": {
-        "name": "test template",
-        "text_path": "../sample_data/phishing/test_page.html"
+        "name": "Test Template",
+        "text_path": "../sample_data/phishing/template.txt"
     }
 }
