@@ -2,7 +2,7 @@
 
 ## Setup
 
-1. Install python dependencies (`pip install -r requirements.txt`).
+1. Install python dependencies (`pip install --no-deps -r requirements.txt`). **Make sure --no-deps flag is used.**
 2. Install node dependencies (go to `preprocess/process_pst_js/` and run `npm install`)
 3. Comment out lines 162-165 in `preprocess/process_pst_js/node_modules/pst-extractor/dist/PSTFolder.class.js`. Not sure if this is a bug or I'm doing something wrong, but it only seems to extract all the PST items if these lines are commented out: 
 
