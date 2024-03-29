@@ -28,8 +28,10 @@ def create_group_from_user(user: dict[str, Any], group_name: str) -> Group:
     return group
 
 
-def create_campaign(user_file: Path, config: dict[str, Any], launch: bool = False, add_signature_to_template: bool = True) -> None:
-    """Creates Gophish campaign from user_file
+def create_campaign(user_file: Path, config: dict[str, Any], add_signature_to_template: bool = True) -> None:
+    """
+    Creates Gophish campaign models (sending profile, group, etc.) from 
+    user_file.
 
     Args:
         user_file (Path): user JSON file produced by a Project in
@@ -42,9 +44,6 @@ def create_campaign(user_file: Path, config: dict[str, Any], launch: bool = Fals
             "Page" (dict): Args for Page model; need to specify "name" and "text_path".
             "Template" (dict): Args for Template model; need to specify "name" and "text_path"
         }
-        launch (bool, optional): Whether to launch campaign. If False, just
-            posts the individual models (Group, Page, SMTP, etc.). Defaults
-            to False.
         add_signature_to_template (bool, optional): Whether to add signature
             from user_file to end of phishing template. Defaults to True.
 
@@ -96,12 +95,7 @@ def create_campaign(user_file: Path, config: dict[str, Any], launch: bool = Fals
     api_key = config['api_key']
     api = Gophish(api_key, verify=False)
 
-    if launch:
-        campaign = Campaign(groups=groups, name='Test Campaign',
-                            template=template, page=page, smtp=smtp)
-        api.campaigns.post(campaign)
-    else:
-        api.groups.post(group)
-        api.pages.post(page)
-        api.templates.post(template)
-        api.smtp.post(smtp)
+    api.groups.post(group)
+    api.pages.post(page)
+    api.templates.post(template)
+    api.smtp.post(smtp)
