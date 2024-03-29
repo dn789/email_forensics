@@ -1,5 +1,0 @@
-{{.FirstName}},
-
-The password for {{.Email}} has expired. Please reset your password here.
-
-Thanks,
