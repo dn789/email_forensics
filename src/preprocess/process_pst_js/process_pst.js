@@ -17,7 +17,6 @@ import { convert } from "html-to-text";
 import { PSTFile } from "pst-extractor";
 import { mkdirSync, writeFileSync } from "fs";
 
-
 // Remove keys from item JSON
 const removeKeys = [
     "descriptorIndexNode",
@@ -35,7 +34,7 @@ function processPST(input, output) {
     try {
         pstFile = new PSTFile(input);
     } catch (err) {
-        console.log('Error opening: ' + input);
+        console.log("Error opening: " + input);
     }
     mkdirSync(output, { recursive: true });
     processFolder(pstFile.getRootFolder(), output);
@@ -76,38 +75,44 @@ function saveItem(item, output, i) {
     let bcc = itemObj.displayBCC;
 
     [...Array(item.numberOfRecipients).keys()].forEach((r) => {
-
-        let recipient = item.getRecipient(r)
+        let recipient = item.getRecipient(r);
         let recipientType;
-        let emailAddress = recipient.emailAddress
+        let emailAddress = recipient.emailAddress;
 
-        if (to && (to.includes(recipient.displayName) | to.includes(recipient.emailAddress))) {
-            recipientType = 'to'
+        if (
+            to &&
+            to.includes(recipient.displayName) |
+                to.includes(recipient.emailAddress)
+        ) {
+            recipientType = "to";
+        } else if (
+            cc &&
+            cc.includes(recipient.displayName) |
+                cc.includes(recipient.emailAddress)
+        ) {
+            recipientType = "cc";
+        } else if (
+            bcc &&
+            bcc.includes(recipient.displayName) |
+                bcc.includes(recipient.emailAddress)
+        ) {
+            recipientType = "bcc";
         }
-        else if (cc && (cc.includes(recipient.displayName) | cc.includes(recipient.emailAddress))) {
-            recipientType = 'cc'
-        }
-        else if (bcc && (bcc.includes(recipient.displayName) | bcc.includes(recipient.emailAddress))) {
-            recipientType = 'bcc'
-        }
-        recipients.push(
-            {
-                name: recipient.displayName,
-                addr: emailAddress,
-                type: recipientType,
-            }
-        )
+        recipients.push({
+            name: recipient.displayName,
+            addr: emailAddress,
+            type: recipientType,
+        });
     });
 
-    itemObj.recipients = recipients
+    itemObj.recipients = recipients;
 
     removeKeys.forEach((k) => delete itemObj[k]);
 
     try {
         if (item.body) {
             itemObj.bodyText = item.body;
-        }
-        else if (item.bodyRTF) {
+        } else if (item.bodyRTF) {
             itemObj.bodyText = item.bodyRTF;
         }
         if (item.bodyHTML) {
@@ -116,8 +121,7 @@ function saveItem(item, output, i) {
                 itemObj.bodyText = htmlToText(item.bodyHTML);
             }
         }
-    } catch (err) { }
-
+    } catch (err) {}
 
     let type = item.messageClass.slice(4);
     let itemString = JSON.stringify(itemObj);
@@ -138,6 +142,4 @@ function htmlToText(HTML) {
 let input = process.argv[2];
 let output = process.argv[3];
 
-
 processPST(input, output);
-
