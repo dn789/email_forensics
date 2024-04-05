@@ -24,6 +24,12 @@ class SemanticModel:
         else:
             self.load_doc_embeds()
 
+        try:
+            assert len(self.doc_embeds) == len(doc_ref.get_paths())
+        except AssertionError:
+            raise ValueError(
+                '# of embedded docs in doc_ref does not match length of doc_embeds. Try creating doc_ref and/or doc_embeds again.')
+
     def encode_docs(self) -> None:
         print('\nEncoding docs. This might take a while...')
 
@@ -58,7 +64,11 @@ class SemanticModel:
 
     def load_doc_embeds(self) -> None:
         with open(self.embeds_path, 'rb') as f:
-            self.doc_embeds = pickle.load(f)
+            try:
+                self.doc_embeds = pickle.load(f)
+            except EOFError:
+                raise ValueError(
+                    f'Doc embeds file is not properly formatted: {self.embeds_path}')
 
     def load_sent_embeds(self) -> None:
         with open(self.sent_embeds_path, 'rb') as f:

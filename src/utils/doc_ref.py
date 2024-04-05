@@ -3,7 +3,6 @@ DocRef class that keeps track of file paths of PST items, named entities,
 senders/recipients, etc.
 
 """
-from collections import Counter
 from pathlib import Path
 import pandas as pd
 
@@ -13,14 +12,33 @@ from utils.io import load_json
 
 class DocRef:
     def __init__(self, docs_folder: Path, ref_path: Path) -> None:
+        if not docs_folder.exists():
+            raise FileNotFoundError(f'docs_folder not found: "{docs_folder}"')
         self.docs_folder = docs_folder
+        try:
+            self.source_dict = load_json(docs_folder / 'sources.json')
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                'No sources.json file found in docs_folder. Did you forget to run the preprocessing step?')
+        if not self.source_dict:
+            raise ValueError(
+                'No info found in source.json. Did you forget to run the preprocessing step?')
         self.path = ref_path
-        self.source_dict = load_json(docs_folder / 'sources.json')
         if ref_path.is_file():
             self.df = pd.read_pickle(ref_path)
         else:
             self.make_df()
             self.save()
+        if self.df.empty:
+            raise ValueError(
+                """No docs found in docs_folder. This is due to either:
+            (1) An error in the proceprocessing step
+            (2) A lack of content in the source""")
+        if not self.get_paths():
+            raise ValueError(
+                """No body text found in source data. This is due to either:
+            (1) An error in the proceprocessing step
+            (2) A lack of text content in the source data""")
 
     def make_df(self):
         d = {

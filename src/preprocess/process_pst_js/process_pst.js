@@ -35,6 +35,7 @@ function processPST(input, output) {
         pstFile = new PSTFile(input);
     } catch (err) {
         console.log("Error opening: " + input);
+        return;
     }
     mkdirSync(output, { recursive: true });
     processFolder(pstFile.getRootFolder(), output);

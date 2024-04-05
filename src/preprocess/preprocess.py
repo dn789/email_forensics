@@ -23,6 +23,10 @@ def preprocess(pst_input: Path, output: Path):
             elif path.is_dir():
                 folders_to_process.append(path)
 
+    if not psts_to_process and not folders_to_process:
+        raise ValueError(
+            f'Couldn\'t find any PSTs or folders to process in {pst_input}')
+
     for pst in psts_to_process:
         print(f'\nExtracting contents of {pst.name}...')
         subprocess.run(

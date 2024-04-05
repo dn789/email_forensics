@@ -23,9 +23,7 @@ from utils.doc import (check_if_folder_is_sent,
                        find_phone_nums,
                        find_urls)
 from utils.doc_ref import DocRef
-
-
-JOB_TITLES = open('../data/wordlists/job_titles.txt').read().split('\n')
+from utils.paths import JOB_TITLES
 
 
 @dataclass
@@ -77,11 +75,11 @@ def check_if_signature_wrapper(user_name: str) -> Callable[[str], bool | None]:
     return check_if_signature
 
 
-def get_job_titles(text: str) -> list[str]:
-    return sorted([job for job in JOB_TITLES if re.findall(fr'\b{job}\b', text, flags=re.IGNORECASE)], key=len, reverse=True)[:2]
+def get_job_titles(text: str, job_titles_ref: list[str]) -> list[str]:
+    return sorted([job for job in job_titles_ref if re.findall(fr'\b{job}\b', text, flags=re.IGNORECASE)], key=len, reverse=True)[:2]
 
 
-def get_signatures_for_user(user: UserInfo, paths: list[Path], n_docs_to_sample: int = 100) -> None:
+def get_signatures_for_user(user: UserInfo, paths: list[Path], job_titles_ref: list[str], n_docs_to_sample: int = 100,) -> None:
     random.shuffle(paths)
     paths = paths[:n_docs_to_sample]
     matches_w_paths = get_matches_in_bodies(
@@ -99,7 +97,7 @@ def get_signatures_for_user(user: UserInfo, paths: list[Path], n_docs_to_sample:
 
     if signatures:
         user.signatures = signatures
-        job_titles = get_job_titles(signatures[0])
+        job_titles = get_job_titles(signatures[0], job_titles_ref)
         user.job_titles = job_titles
 
 
@@ -178,8 +176,9 @@ def process_user(user_folder: Path, org_info: OrgInfo, doc_ref: DocRef) -> None:
                 process_doc(path, user, org_info)
 
         print(f'\nGetting signatures...')
+        job_titles_ref = open(JOB_TITLES).read().split('\n')
         get_signatures_for_user(
-            user, doc_ref.get_paths_by_user_folder(user_folder, sent_only=True))
+            user, doc_ref.get_paths_by_user_folder(user_folder, sent_only=True), job_titles_ref)
     else:
         warnings.warn(
             f'\nCan\'t find a user for {user_folder.name}. Processing without getting user-specific info... ')

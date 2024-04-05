@@ -28,6 +28,7 @@ def make_message_dict(path: Path, parser: parser.Parser) -> dict[str, str] | Non
 def process_folder(folder: Path, output: Path) -> None:
     if output.name != folder.name:
         output = output / folder.name
+    output.mkdir(parents=True, exist_ok=True)
     p = parser.Parser(policy=default)
     for path in folder.rglob('*'):
         # Neeed to parse other item types

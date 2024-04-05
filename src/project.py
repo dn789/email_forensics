@@ -140,10 +140,11 @@ class Project:
         save_signatures_from_all_docs(freq_deduped_matches,  # type: ignore
                                       self.paths.contact_info / 'signatures.json')
 
-    def query_docs(self, query: str | list, top_n: int = 10, query_label: str = 'query', show_score: bool = True) -> None:
+    def query_docs(self, query: str | list, top_n: int = 10, show_score: bool = True, save: bool = False) -> None:
+        query_label = query if isinstance(query, str) else '_'.join(query)
         query_label = query_label.replace(' ', '_')
         self.semantic_model.query_docs(
-            query, query_label=query_label, show_top_n=top_n, show_score=show_score)
+            query, query_label=query_label, show_top_n=top_n, show_score=show_score, save=save)
 
     def get_entities_from_relevant_docs(self,
                                         filter_query: str | list,
