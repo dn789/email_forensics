@@ -131,7 +131,7 @@ def get_entities_by_doc_query(doc_ref: DocRef,
                               util_folder: Path,
                               output_folder:  Path,
                               query_label: str = 'query',
-                              query_threshold: float = .3,
+                              query_threshold: float = .25,
                               orgs_only: bool = True,
                               n_docs_sample_freq_orgs: int = 250,
                               occurence_threshold_freq_orgs: float = .05

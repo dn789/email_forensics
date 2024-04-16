@@ -29,13 +29,21 @@ def preprocess(pst_input: Path, output: Path):
 
     for pst in psts_to_process:
         print(f'\nExtracting contents of {pst.name}...')
+        processed_pst_folder = output / pst.stem
         subprocess.run(
-            ['node', 'preprocess/process_pst_js/process_pst.js', pst, output / pst.stem])
-        source_d[pst.stem] = 'pst'
+            ['node', 'preprocess/process_pst_js/process_pst.js', pst, processed_pst_folder])
+        if processed_pst_folder.is_dir():
+            source_d[pst.stem] = 'pst'
 
     for folder in folders_to_process:
         print(f'\nPreprocessing {folder.name}...')
-        process_folder(folder, output)
-        source_d[folder.__str__()] = 'folder'
+        processed_folder = output / folder.name
+        process_folder(folder, processed_folder)
+        if processed_folder.is_dir():
+            source_d[folder.name] = 'folder'
 
-    dump_json(source_d, sources_path)
+    if source_d:
+        dump_json(source_d, sources_path)
+    else:
+        raise ValueError(
+            'No content found in input. Either the PST(s)/email file(s) have no content or there was a problem reading them.')

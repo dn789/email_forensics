@@ -4,14 +4,14 @@ from collections import Counter
 from dataclasses import dataclass, field
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Callable, Any
+from typing import Callable
 import random
 import re
 import warnings
+from ast import literal_eval
 
 from fuzzysearch import find_near_matches
 import tldextract
-from tqdm import tqdm
 
 from clean_body_text import get_freq_deduped_matches, get_matches_in_bodies
 from utils.io import dump_json, load_json
@@ -24,6 +24,7 @@ from utils.doc import (check_if_folder_is_sent,
                        find_urls)
 from utils.doc_ref import DocRef
 from utils.paths import JOB_TITLES
+from utils.messages import MULTI_USER_PROMPT
 
 
 @dataclass
@@ -50,11 +51,9 @@ class OrgInfo:
     phone_nums_w_context: dict[str, set[str]] = field(default_factory=dict)
 
 
-def get_greetings(text: str) -> list[str]:
-    first_block = text.strip().split('\n')[0]
-    greetings = [x for x in (first_block.split(',')[0].strip(),
-                             first_block.split(':')[0].strip()) if x]
-    return greetings
+def get_greeting(text: str) -> str:
+    greeting = text.strip().split('\n')[0].strip()
+    return greeting
 
 
 def check_if_signature_wrapper(user_name: str) -> Callable[[str], bool | None]:
@@ -76,7 +75,7 @@ def check_if_signature_wrapper(user_name: str) -> Callable[[str], bool | None]:
 
 
 def get_job_titles(text: str, job_titles_ref: list[str]) -> list[str]:
-    return sorted([job for job in job_titles_ref if re.findall(fr'\b{job}\b', text, flags=re.IGNORECASE)], key=len, reverse=True)[:2]
+    return sorted([job.strip() for job in job_titles_ref if re.findall(fr'\b{job}\b', text, flags=re.IGNORECASE)], key=len, reverse=True)[:2]
 
 
 def get_signatures_for_user(user: UserInfo, paths: list[Path], job_titles_ref: list[str], n_docs_to_sample: int = 100,) -> None:
@@ -101,90 +100,122 @@ def get_signatures_for_user(user: UserInfo, paths: list[Path], job_titles_ref: l
         user.job_titles = job_titles
 
 
-def determine_user(folder: Path, from_pst: bool = True) -> dict[str, Counter]:
+def determine_user(folder: Path, doc_ref: DocRef, from_pst: bool = True) -> list[dict[str, set[str] | str]] | None:
+    users = []
     if from_pst:
-        receving_names, receving_email_addrs = Counter(), Counter()
-        for path in folder.rglob('*'):
-            if path.is_file() and path.name.endswith('Note.json'):
-                try:
-                    doc = load_json(path)
-                except JSONDecodeError:
-                    print(path)
-                    raise Exception
-                if r_name := doc.get('receivedByName'):
-                    receving_names[r_name] += 1
-                if r_addr := doc.get('receivedByAddress'):
-                    receving_email_addrs[r_addr] += 1
-        if r_addrs_count := len(receving_email_addrs) > 1:
-            warnings.warn(
-                f"""\n{r_addrs_count} email addresses found for user in {folder.name}:
-                    {', '.join(receving_email_addrs)}
-                    Make sure these belong to the same person.""")
-        if r_names_count := len(receving_names) > 1:
-            warnings.warn(
-                f"""\n{r_names_count} names found for user in {folder.name}:
-                    {', '.join(receving_names)}
-                    Make sure these belong to the same person.""")
-        return {'names': receving_names, 'addrs': receving_email_addrs}
+        folder_paths = doc_ref.get_paths_by_user_folder(folder)
     else:
-        sender_names, sender_email_addrs = Counter(), Counter()
-        for path in folder.rglob('*'):
-            if not check_if_folder_is_sent(path):
+        folder_paths = doc_ref.get_paths_by_user_folder(folder, sent_only=True)
+    potential_users = {}
+    for path in folder_paths:
+        if path.is_file():
+            try:
+                doc = load_json(path)
+            except JSONDecodeError:
+                print(f'JSONDecodeError for {path}. Skipping...')
                 continue
-            if path.is_file() and path.suffix == '.json':
-                try:
-                    doc = load_json(path)
-                except JSONDecodeError:
-                    print(path)
-                    raise Exception
+            if from_pst:
+                addr = doc.get('receivedByAddress')
+                name = doc.get('receivedByName')
+            else:
                 sender = get_sender(doc)
-                if r_name := sender.get('name'):
-                    sender_names[r_name] += 1
-                if r_addr := sender.get('addr'):
-                    sender_email_addrs[r_addr] += 1
-        if r_addrs_count := len(sender_email_addrs) > 1:
-            warnings.warn(
-                f"""\n{r_addrs_count} email addresses found for user in {folder.name}:
-                    {', '.join(sender_email_addrs)}
-                    Make sure these belong to the same person.""")
-        if r_names_count := len(sender_names) > 1:
-            warnings.warn(
-                f"""\n{r_names_count} names found for user in {folder.name}:
-                    {', '.join(sender_names)}
-                    Make sure these belong to the same person.""")
-        return {'names': sender_names, 'addrs': sender_email_addrs}
+                addr = sender.get('addr')
+                name = sender.get('name')
+
+            if addr:
+                potential_users.setdefault(addr, {
+                    'names': Counter(),
+                    'count': 0
+                })
+                potential_users[addr]['count'] += 1
+                if name:
+                    potential_users[addr]['names'][name] += 1
+
+    if not potential_users:
+        return
+
+    if len(potential_users) == 1:
+        (addr, d), = potential_users.items()
+        name = d['names'].most_common()[0][0] if d['names'] else addr
+        user = {'addr':  addr, 'name': name, 'addrs': set([addr]), ** d}
+        users.append(user)
+        return users
+
+    potential_users_l = []
+    users_str_l = []
+    for i, (addr, d) in enumerate(potential_users.items()):
+        users_str_l.append(
+            f'({i + 1}) {addr}; names: {" ".join(d["names"])}; count: {d["count"]}')
+        user_d = {'addr': addr, **d}
+        potential_users_l.append(user_d)
+    users_str = '\n'.join(users_str_l)
+    selection = input(
+        f"""\n{len(potential_users)} potential users found for {folder.name}:\n{users_str}\n\n{MULTI_USER_PROMPT}"""
+    )
+    if selection == 'all':
+        selection = [list(range(1, len(potential_users_l) + 1))]
+    else:
+        selection = literal_eval(selection)
+    if isinstance(selection, int):
+        selection = [selection]
+    if not hasattr(selection, '__iter__'):
+        raise ValueError('Enter an iterable, integer, or "all"')
+    for int_group in selection:
+        if isinstance(int_group, int):
+            int_group = [int_group]
+        user_items = [potential_users_l[int_ - 1]
+                      for int_ in int_group]
+        user_items.sort(key=lambda x: x[
+            'count'], reverse=True)
+        names = Counter()
+        email_addrs = set()
+        for user_item in user_items:
+            names.update(user_item['names'])
+            email_addrs.add(user_item['addr'])
+        user = {
+            'addr': user_items[0]['addr'],
+            'name': names.most_common()[0][0] if names else user_items[0]['addr'],
+            'names': names,
+            'addrs': email_addrs
+        }
+        users.append(user)
+
+    return users
 
 
 def process_user(user_folder: Path, org_info: OrgInfo, doc_ref: DocRef) -> None:
     from_pst = doc_ref.source_dict[user_folder.name.__str__()] == 'pst'
-    user_d = determine_user(user_folder, from_pst=from_pst)
-    names = set()
-    for i, (name, count) in enumerate(user_d['names'].most_common()):
-        if not i:
-            rep_user_name = name
-        names.add(name)
-    if names:
-        print(
-            f'\nProcessing {user_folder.name}. (User: {rep_user_name})...')
-        user = UserInfo(name=rep_user_name)
-        user.all_names = names
-        user.email_addrs.update(user_d['addrs'].keys())
-        org_info.users.append(user)
-
-        for path in user_folder.rglob('*'):
-            if path.is_file():
-                process_doc(path, user, org_info)
-
-        print(f'\nGetting signatures...')
-        job_titles_ref = open(JOB_TITLES).read().split('\n')
-        get_signatures_for_user(
-            user, doc_ref.get_paths_by_user_folder(user_folder, sent_only=True), job_titles_ref)
-    else:
+    users = determine_user(user_folder, doc_ref, from_pst=from_pst)
+    if not users:
         warnings.warn(
             f'\nCan\'t find a user for {user_folder.name}. Processing without getting user-specific info... ')
         for path in user_folder.rglob('*'):
             if path.is_file():
                 process_doc(path, None, org_info)
+        return
+
+    for user_d in users:
+        user = UserInfo(name=user_d["name"])  # type: ignore
+        user.all_names.update(user_d['names'])
+        user.email_addrs.update(addr.lower() for addr in user_d['addrs'])
+        org_info.users.append(user)
+
+        print(
+            f'\nProcessing {user_folder.name}. (User: {user_d["name"]})...')
+
+        include_contacts = False if len(users) > 1 else True
+        paths_to_process = doc_ref.get_paths_with_email_addrs(
+            user.email_addrs, user_folder, include_contacts=include_contacts)
+
+        for path in paths_to_process:
+            process_doc(path, user, org_info)
+
+        print(f'\nGetting signatures...')
+        job_titles_ref = open(JOB_TITLES).read().split('\n')
+        sent_paths_to_process = [path for path,
+                                 d in paths_to_process.items() if d['sent']]
+        get_signatures_for_user(
+            user, sent_paths_to_process, job_titles_ref)
 
 
 def process_doc(path: Path, user: UserInfo | None, org_info: OrgInfo) -> None:
@@ -214,12 +245,12 @@ def process_doc(path: Path, user: UserInfo | None, org_info: OrgInfo) -> None:
                 continue
 
             if check_if_folder_is_sent(path):
-                greetings = get_greetings(body) if body else None
+                greeting = get_greeting(body) if body else None
                 target_com_types = ('to', 'cc', 'bcc', 'recipient')
                 if '@' in addr:
                     org_info.org_domains.add(addr.split('@')[1])
             else:
-                greetings = None
+                greeting = None
                 target_com_types = ('sender',)
                 if user and name == user.name and '@' in addr:
                     org_info.org_domains.add(addr.split('@')[1])
@@ -231,16 +262,16 @@ def process_doc(path: Path, user: UserInfo | None, org_info: OrgInfo) -> None:
                 user.communicators[addr]['com_types'][com_type] += 1  # type: ignore # nopep8
                 if name:
                     user.communicators[addr]['names'].add(name)  # type: ignore
-                if greetings and com_type == 'to':
-                    user.communicators[addr]['user_greetings'].update(
-                        greetings)
+                if greeting and com_type == 'to':
+                    user.communicators[addr]['user_greetings'][greeting] += 1  # type: ignore # nopep8
 
     elif doc_type == 'IPM.Contact' and user:
         if contact := get_contact(doc):
             user.contacts.append(contact)
             email_addr = contact['email_addr']
             org_info.email_addrs_w_names.setdefault(email_addr, set())
-            org_info.email_addrs_w_names[email_addr].add(contact['name'])
+            if name := contact.get('name'):
+                org_info.email_addrs_w_names[email_addr].add(name)
 
     if body:
         email_addrs = find_email_addresses(body)

@@ -141,5 +141,18 @@ class DocRef:
     def get_recipients(self, path: Path) -> list[dict[str, str | None]]:
         return self.df.loc[path, 'recipients']  # type: ignore
 
+    def get_paths_with_email_addrs(self, email_addrs: set[str], user_folder: Path, include_contacts: bool = False):
+        email_addrs = set(addr.lower() for addr in email_addrs)
+        paths = {}
+        for path in self.get_paths_by_user_folder(user_folder):
+            if include_contacts and path.name.endswith('Contact.json'):
+                paths[path] = {'sent': False}
+                continue
+            doc_email_addrs = set(item['addr'].lower() for item in [  # type: ignore
+                self.get_sender(path)] + self.get_recipients(path) if item)
+            if email_addrs & doc_email_addrs:
+                paths[path] = {'sent': check_if_folder_is_sent(path)}
+        return paths
+
     def save(self):
         self.df.to_pickle(self.path)

@@ -1,6 +1,7 @@
 from email import parser
 from email.policy import default
 from pathlib import Path
+import shutil
 
 from utils.io import dump_json
 
@@ -12,7 +13,11 @@ def make_message_dict(path: Path, parser: parser.Parser) -> dict[str, str] | Non
         return
     if message_obj.__dict__.get('defects'):
         return
-    message_dict = dict(message_obj.items())
+    try:
+        message_dict = dict(message_obj.items())
+    except Exception:
+        print(f'Error parsing {path}. Skipping file...')
+        return
     body_text = message_obj.get_body(preferencelist=('plain'))  # type: ignore
     body_html = message_obj.get_body(preferencelist=('html'))  # type: ignore
     if body_text:
@@ -26,8 +31,7 @@ def make_message_dict(path: Path, parser: parser.Parser) -> dict[str, str] | Non
 
 
 def process_folder(folder: Path, output: Path) -> None:
-    if output.name != folder.name:
-        output = output / folder.name
+    processed_files = False
     output.mkdir(parents=True, exist_ok=True)
     p = parser.Parser(policy=default)
     for path in folder.rglob('*'):
@@ -39,5 +43,8 @@ def process_folder(folder: Path, output: Path) -> None:
             message_dict['messageClass'] = 'IPM.Note'
             dump_json(message_dict, (output /
                                      path.relative_to(folder).with_suffix('.json')))
+            processed_files = True
         else:
             (output / path.relative_to(folder)).mkdir(parents=True, exist_ok=True)
+    if not processed_files:
+        shutil.rmtree(output)

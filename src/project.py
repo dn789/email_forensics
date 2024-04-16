@@ -5,6 +5,7 @@ Analyzes a company or organization's emails and other PST contents.
 
 from collections import namedtuple
 from pathlib import Path
+import logging
 
 from clean_body_text import clean_body_text
 from get_entities import get_entities_by_doc_query
@@ -70,6 +71,9 @@ class Project:
         Paths = namedtuple('Paths', paths)
         self.paths = Paths(**paths)
 
+        logging.basicConfig(filename=self.paths.util / 'errors.log',
+                            level=logging.ERROR)
+
         if self.paths.checklist.is_file():
             checklist = load_json(self.paths.checklist)
         else:
@@ -105,7 +109,11 @@ class Project:
 
     def preprocess(self):
         print('\nPreprocessing input...')
-        preprocess(self.source, self.paths.docs)
+        try:
+            preprocess(self.source, self.paths.docs)
+        except Exception as e:
+            logging.exception("Exception: %s", str(e))
+            raise e
 
     def clean_body_text(self, **kwargs) -> None:
         """
@@ -128,17 +136,23 @@ class Project:
                 to True.
         """
         print('\nCleaning body text...')
-
-        clean_body_text(
-            self.doc_ref, self.paths.clean_body_text, **kwargs)
+        try:
+            clean_body_text(
+                self.doc_ref, self.paths.clean_body_text, **kwargs)
+        except Exception as e:
+            logging.exception("Exception: %s", str(e))
+            raise e
 
     def get_contact_info(self) -> None:
-        print('\nGetting contact info...')
-        get_contact_info(self.doc_ref, self.paths.contact_info)
-        freq_deduped_matches = load_json(
-            self.paths.clean_body_text / 'freq_deduped_matches.json')
-        save_signatures_from_all_docs(freq_deduped_matches,  # type: ignore
-                                      self.paths.contact_info / 'signatures.json')
+        try:
+            print('\nGetting contact info...')
+            get_contact_info(self.doc_ref, self.paths.contact_info)
+            freq_deduped_matches = load_json(
+                self.paths.clean_body_text / 'freq_deduped_matches.json')
+            save_signatures_from_all_docs(freq_deduped_matches,  # type: ignore
+                                          self.paths.contact_info / 'signatures.json')
+        except Exception as e:
+            logging.exception("Exception: %s", str(e))
 
     def query_docs(self, query: str | list, top_n: int = 10, show_score: bool = True, save: bool = False) -> None:
         query_label = query if isinstance(query, str) else '_'.join(query)
@@ -172,17 +186,20 @@ class Project:
             at least this proportion of random docs will be filtered out . 
             Defaults to .05.
         """
-        self.semantic_model.query_docs(
-            filter_query, query_label=query_label, save=True)
+        try:
+            self.semantic_model.query_docs(
+                filter_query, query_label=query_label, save=True)
 
-        get_entities_by_doc_query(self.doc_ref,
-                                  self.paths.entities_util,
-                                  self.paths.entities,
-                                  query_label=query_label,
-                                  query_threshold=query_threshold,
-                                  orgs_only=orgs_only,
-                                  n_docs_sample_freq_orgs=n_docs_sample_freq_orgs,
-                                  occurence_threshold_freq_orgs=occurence_threshold_freq_orgs)
+            get_entities_by_doc_query(self.doc_ref,
+                                      self.paths.entities_util,
+                                      self.paths.entities,
+                                      query_label=query_label,
+                                      query_threshold=query_threshold,
+                                      orgs_only=orgs_only,
+                                      n_docs_sample_freq_orgs=n_docs_sample_freq_orgs,
+                                      occurence_threshold_freq_orgs=occurence_threshold_freq_orgs)
+        except Exception as e:
+            logging.exception("Exception occurred: %s", str(e))
 
     def get_vendors(self, **kwargs):
         """
@@ -207,8 +224,11 @@ class Project:
                 Defaults to .05.
         """
         print('\nGetting vendor names...')
-        kwargs['filter_query'] = kwargs.get(
-            'filter_query', ['invoice', 'payment', 'vendor'])
-        kwargs['query_label'] = kwargs.get(
-            'query_label', 'vendors_default')
-        self.get_entities_from_relevant_docs(**kwargs)
+        try:
+            kwargs['filter_query'] = kwargs.get(
+                'filter_query', ['invoice', 'payment', 'vendor'])
+            kwargs['query_label'] = kwargs.get(
+                'query_label', 'vendors_default')
+            self.get_entities_from_relevant_docs(**kwargs)
+        except Exception as e:
+            logging.exception("Exception occurred: %s", str(e))

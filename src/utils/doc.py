@@ -19,7 +19,7 @@ def parse_name(name: str) -> dict[str, str] | None:
         return parsed_name
 
 
-def get_contact(contactItem: dict) -> dict | None:
+def get_contact(contactItem: dict) -> dict[str, str] | None:
     """Gets 1st email and display name."""
     name = contactItem.get('email1DisplayName')
     if not name:
