@@ -201,7 +201,7 @@ def process_user(user_folder: Path, org_info: OrgInfo, doc_ref: DocRef) -> None:
         org_info.users.append(user)
 
         print(
-            f'\nProcessing {user_folder.name}. (User: {user_d["name"]})...')
+            f'\nProcessing folder: {user_folder.name} (User: {user_d["name"]})...')
 
         include_contacts = False if len(users) > 1 else True
         paths_to_process = doc_ref.get_paths_with_email_addrs(

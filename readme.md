@@ -4,24 +4,30 @@
 
 1. Install python dependencies (`pip install --no-deps -r requirements.txt`). **Make sure --no-deps flag is used.**
 2. Install node dependencies (go to `preprocess/process_pst_js/` and run `npm install`)
-3. Comment out lines 162-165 in `preprocess/process_pst_js/node_modules/pst-extractor/dist/PSTFolder.class.js`. Not sure if this is a bug or I'm doing something wrong, but it only seems to extract all the PST items if these lines are commented out: 
+3. Comment out lines 162-165 in `preprocess/process_pst_js/node_modules/pst-extractor/dist/PSTFolder.class.js`. Not sure if this is a bug or I'm doing something wrong, but it only seems to extract all the PST items if these lines are commented out:
 
-  ```
-  if ((emailRow && emailRow.itemIndex == -1) || !emailRow) {
-    // no more!
-    return null;
-  }
-  ```
+```
+if ((emailRow && emailRow.itemIndex == -1) || !emailRow) {
+  // no more!
+  return null;
+}
+```
+
 4. Install and run `Gophish` (https://getgophish.com/)
 5. Get `Gophish` api key and add to `config/phish_config.json`.
+6. Install `Gitleaks` (https://github.com/gitleaks) (Go required)
 
 ## Usage
 
-**Note:** See `project.py` documentation for parameters, etc. **The only thing that needs to be specified is a source and project folder.**
+### Note
+
+See `project.py` documentation for parameters, etc. **The only thing that needs to be specified in the config file is a source and project folder.**
+
+**If you want to find passwords, API keys, etc., you also need to specify the `gitleaks_path` (path to the executable) in `find_secrets` in the config file. The `gitleaks_config` path is already specified.**
 
 1. Specify a source (path of folder containing PST files or email files, or the path of a single PST file.) and project (output) folder in the `config/project.config` file.
 
-    *Note:* Each PST file or subfolder should correspond to an individual's communications (for getting things like their top communicators, etc.) If the program can't find an "owner" (by inferring from sent folders or the `PR_RECEIVED_BY_NAME` Outlook API property) it will just get non-user-specific data from the folder/PST. 
+    _Note:_ Each PST file or subfolder should correspond to an individual's communications (for getting things like their top communicators, etc.) If the program can't find an "owner" (by inferring from sent folders or the `PR_RECEIVED_BY_NAME` Outlook API property) it will just get non-user-specific data from the folder/PST.
 
 2. Run the first cell in `main.ipynb` to initialize a `Project` and run the analysis. The results will be in `[project-folder]/output`. You can initialze a `Project` instance in the same folder and already-completed items won't be run again.
 
@@ -41,10 +47,14 @@
  ┃ ┃ ┣ <b>phone_nums</b> : phone nums w/ context
  ┃ ┃ ┣ <b>urls</b> : company/org emails and all emails
  ┃ ┃ ┣ <b>users</b> : files for users containing their contacts, top communicators, job title, signature, etc.
- ┃ ┗ <b>entities</b> : Vendor names, etc.
+ ┃ ┗ <b>entities</b> : vendor names, etc.
+ ┃ ┗ <b>secrets.json</b> : passwords, API keys, etc.
 </pre>
 
 **Notes:**
- - **user job titles/signatures**: Signatures for users are identified from frequent text blocks that have their name, a phone number and/or email address. Job titles are extracted from the signature using a list of 200k job titles. Multiple candidates are included in case of false positives.
 
-     The next step would be classifying the job titles as executive/not, which shouldn't be difficult.
+-   **user job titles/signatures**: Signatures for users are identified from frequent text blocks that have their name, a phone number and/or email address. Job titles are extracted from the signature using a list of 200k job titles. Multiple candidates are included in case of false positives.
+
+    The next step would be classifying the job titles as executive/not, which shouldn't be difficult.
+
+-   **find_secrets/gitleaks**: Change the entropy of the rules in the gitleaks config file (`config/gitleaks.toml`) to increase or decrease the sensitivity of the search. The most productive rule should be "generic-api-key".
