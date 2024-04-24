@@ -4,6 +4,10 @@
     "already_preprocessed": false,
     "get_vendors": {},
     "preprocess": {},
+    "find_secrets": {
+        "gitleaks_path": null,
+        "gitleaks_config": "../config/gitleaks.toml"
+    },
     "clean_body_text": {},
     "semantic_model_name": "msmarco-distilbert-base-v4"
 }
