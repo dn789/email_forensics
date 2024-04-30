@@ -2,12 +2,15 @@ from flair.data import Sentence
 from flair.models import SequenceTagger
 from nltk import sent_tokenize
 from transformers import pipeline
+from transformers.utils import logging
 
 
 class NerCompanyTagger:
     def __init__(self) -> None:
+        logging.set_verbosity_error()
         self.tagger = pipeline(
-            task='ner', model="nbroad/deberta-v3-base-company-names")
+            task='ner', model="nbroad/deberta-v3-base-company-names", device=0)
+        print(f'NER Tagger using device : {self.tagger.device}')
 
     def __call__(self, text: str, return_set: bool = True, do_sent_tokenize: bool = True) -> set[str] | list[str]:
         if do_sent_tokenize:

@@ -25,7 +25,7 @@ See `project.py` documentation for parameters, etc. **The only thing that needs 
 
 **If you want to find passwords, API keys, etc., you also need to specify the `gitleaks_path` (path to the executable) in `find_secrets` in the config file. The `gitleaks_config` path is already specified.**
 
-1. Specify a source (path of folder containing PST files or email files, or the path of a single PST file.) and project (output) folder in the `config/project.config` file.
+1. Specify a source (path of folder containing PST files or email files, or the path of a single PST file.) and project (output) folder in the `config/project_config.json` file.
 
     _Note:_ Each PST file or subfolder should correspond to an individual's communications (for getting things like their top communicators, etc.) If the program can't find an "owner" (by inferring from sent folders or the `PR_RECEIVED_BY_NAME` Outlook API property) it will just get non-user-specific data from the folder/PST.
 
