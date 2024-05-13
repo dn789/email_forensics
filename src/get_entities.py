@@ -133,7 +133,7 @@ def get_entities_by_doc_query(doc_ref: DocRef,
                               query_label: str = 'query',
                               query_threshold: float = .25,
                               orgs_only: bool = True,
-                              n_docs_sample_freq_orgs: int = 250,
+                              n_docs_sample_freq_orgs: int = 500,
                               occurence_threshold_freq_orgs: float = .05
                               ) -> None:
     """Gets entities from docs relevant to query.
