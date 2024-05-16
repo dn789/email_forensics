@@ -2,20 +2,15 @@
 
 ## Setup
 
-1. Install python dependencies (`pip install --no-deps -r requirements.txt`). **Make sure --no-deps flag is used.**
-2. Install node dependencies (go to `preprocess/process_pst_js/` and run `npm install`)
-3. Comment out lines 162-165 in `preprocess/process_pst_js/node_modules/pst-extractor/dist/PSTFolder.class.js`. Not sure if this is a bug or I'm doing something wrong, but it only seems to extract all the PST items if these lines are commented out:
+Requires: Python 3.11, Node.js 20.12, Golang
 
-```
-if ((emailRow && emailRow.itemIndex == -1) || !emailRow) {
-  // no more!
-  return null;
-}
-```
+1. Install JS and Python dependendencies: `python setup.py`
 
-4. Install and run `Gophish` (https://getgophish.com/)
-5. Get `Gophish` api key and add to `config/phish_config.json`.
-6. Install `Gitleaks` (https://github.com/gitleaks) (Go required)
+    - If you're not using Linux, you'll need to install PyTorch with CUDA support manually.
+    - The setup script will try to edit the code of a JS dependency. If it fails, you'll have to do it manually (see [below](#manually-install-js-and-python-dependencies)).
+
+2. Install and run `Gophish` (https://getgophish.com/). Get `Gophish` api key and add to `config/phish_config.json`.
+3. Install `Gitleaks` (https://github.com/gitleaks) (Golang required)
 
 ## Usage
 
@@ -58,3 +53,17 @@ See `project.py` documentation for parameters, etc. **The only thing that needs 
     The next step would be classifying the job titles as executive/not, which shouldn't be difficult.
 
 -   **find_secrets/gitleaks**: Change the entropy of the rules in the gitleaks config file (`config/gitleaks.toml`) to increase or decrease the sensitivity of the search. The most productive rule should be "generic-api-key".
+
+## Manually install JS and Python dependencies
+
+1. Install python dependencies (`pip install --no-deps -r requirements.txt`). **Make sure --no-deps flag is used.**
+2. Install PyTorch 2.2.2>=2.3.0 with CUDA support (https://pytorch.org/get-started/locally/)
+3. Install node dependencies (go to `preprocess/process_pst_js/` and run `npm install`)
+4. Comment out lines 162-165 in `preprocess/process_pst_js/node_modules/pst-extractor/dist/PSTFolder.class.js`. Not sure if this is a bug, but it only seems to extract all the PST items if these lines are commented out:
+
+```
+if ((emailRow && emailRow.itemIndex == -1) || !emailRow) {
+  // no more!
+  return null;
+}
+```
