@@ -4,10 +4,11 @@
 
 Requires: Python 3.11, Node.js 20.12, Golang
 
-1. Install JS and Python dependendencies: `python setup.py`
+1. Install JS and Python dependendencies: `python requirements.py`
 
     - If you're not using Linux, you'll need to install PyTorch with CUDA support manually.
-    - The setup script will try to edit the code of a JS dependency. If it fails, you'll have to do it manually (see [below](#manually-install-js-and-python-dependencies)).
+    - The setup script will try to edit the code of a JS dependency. If it fails, you'll have to do it manually.
+    - For the above issues or if the script fails, see manual installation instructions [below](#manually-install-js-and-python-dependencies).
 
 2. Install and run `Gophish` (https://getgophish.com/). Get `Gophish` api key and add to `config/phish_config.json`.
 3. Install `Gitleaks` (https://github.com/gitleaks) (Golang required)
