@@ -1,4 +1,21 @@
-# PST Analysis
+# Email Forensics
+
+## Overview
+
+This is a forensic analysis tool for emails. Currently in the alpha phase, the tool:
+
+-   extracts basic info (email addresses, web domains, etc).
+-   finds secrets (passwords, API keys, etc.)
+-   gets sentence embeddings and provides a semantic search interface
+-   uses named entity recognition and semantic search to get a list of vendor names:
+
+    1. Uses semantic search to get emails relevant to terms like "invoice", "payment", "vendor" etc.
+    2. Uses a named entity recognition tagger to get organization names in those emails
+    3. Filters out org entities that occur frequently in entire set of emails.
+
+-   sets up phishing campaigns using automatically extracted greetings and signatures.
+
+The input should be a folder containing an organization's PST files/text email files, with each PST file/text file subfolder corresponding to an employee/member of that organization.
 
 ## Setup
 
@@ -50,8 +67,6 @@ See `project.py` documentation for parameters, etc. **The only thing that needs 
 **Notes:**
 
 -   **user job titles/signatures**: Signatures for users are identified from frequent text blocks that have their name, a phone number and/or email address. Job titles are extracted from the signature using a list of 200k job titles. Multiple candidates are included in case of false positives.
-
-    The next step would be classifying the job titles as executive/not, which shouldn't be difficult.
 
 -   **find_secrets/gitleaks**: Change the entropy of the rules in the gitleaks config file (`config/gitleaks.toml`) to increase or decrease the sensitivity of the search. The most productive rule should be "generic-api-key".
 
